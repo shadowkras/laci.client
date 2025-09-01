@@ -457,7 +457,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
             cts.CancelAfter(TimeSpan.FromSeconds(5));
             _ = Task.Run(async () =>
             {
-                var pair = _pairManager.GetOnlineUserPairs().Single(p => p.UserPair != null && p.UserData == userData);
+                var pair = _pairManager.GetOnlineUserPairs(_serverManager.CurrentServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
                 var perm = pair.UserPair!.OwnPermissions;
                 perm.SetPaused(paused: true);
                 await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
@@ -487,7 +487,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
 
     private async Task PauseAsync(UserData userData)
     {
-        var pair = _pairManager.GetOnlineUserPairs().Single(p => p.UserPair != null && p.UserData == userData);
+        var pair = _pairManager.GetOnlineUserPairs(_serverManager.CurrentServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
         var perm = pair.UserPair!.OwnPermissions;
         perm.SetPaused(paused: true);
         await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
@@ -498,7 +498,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     private async Task<ConnectionDto> GetConnectionDtoAsync(bool publishConnected)
     {
         var dto = await _sinusHub!.InvokeAsync<ConnectionDto>(nameof(GetConnectionDto)).ConfigureAwait(false);
-        if (publishConnected) Mediator.Publish(new ConnectedMessage(dto));
+        if (publishConnected) Mediator.Publish(new ConnectedMessage(dto, _serverManager.CurrentServerIndex));
         return dto;
     }
 
@@ -602,13 +602,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
         {
             Logger.LogDebug("Group: {entry}", entry);
-            _pairManager.AddGroup(entry);
+            _pairManager.AddGroup(entry, _serverManager.CurrentServerIndex);
         }
 
         foreach (var userPair in await UserGetPairedClients().ConfigureAwait(false))
         {
             Logger.LogDebug("Individual Pair: {userPair}", userPair);
-            _pairManager.AddUserPair(userPair);
+            _pairManager.AddUserPair(userPair, _serverManager.CurrentServerIndex);
         }
     }
 
@@ -625,14 +625,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         foreach (var entry in await UserGetOnlinePairs(dto).ConfigureAwait(false))
         {
             Logger.LogDebug("Pair online: {pair}", entry);
-            _pairManager.MarkPairOnline(entry, sendNotif: false);
+            _pairManager.MarkPairOnline(entry, _serverManager.CurrentServerIndex, sendNotif: false);
         }
     }
 
     private void SinusHubOnClosed(Exception? arg)
     {
         _healthCheckTokenSource?.Cancel();
-        Mediator.Publish(new DisconnectedMessage());
+        Mediator.Publish(new DisconnectedMessage(_serverManager.CurrentServerIndex));
         ServerState = ServerState.Offline;
         if (arg != null)
         {
@@ -660,7 +660,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
             ServerState = ServerState.Connected;
             await LoadIninitialPairsAsync().ConfigureAwait(false);
             await LoadOnlinePairsAsync().ConfigureAwait(false);
-            Mediator.Publish(new ConnectedMessage(_connectionDto));
+            Mediator.Publish(new ConnectedMessage(_connectionDto, _serverManager.CurrentServerIndex));
         }
         catch (Exception ex)
         {
@@ -727,7 +727,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
 
             _initialized = false;
             _healthCheckTokenSource?.Cancel();
-            Mediator.Publish(new DisconnectedMessage());
+            Mediator.Publish(new DisconnectedMessage(_serverManager.CurrentServerIndex));
             _sinusHub = null;
             _connectionDto = null;
         }
