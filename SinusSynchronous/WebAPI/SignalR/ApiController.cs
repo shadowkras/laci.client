@@ -33,6 +33,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILoggerProvider _loggerProvider;
     private readonly HttpClient _httpClient;
+    private readonly MultiConnectTokenService _multiConnectTokenService;
     private CancellationTokenSource _connectionCancellationTokenSource;
     private ConnectionDto? _connectionDto;
     private bool _doNotNotifyOnNextInfo = false;
@@ -59,7 +60,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     public ApiController(ILogger<ApiController> logger, ILoggerFactory loggerFactory, HttpClient httpClient,
         HubFactory hubFactory, DalamudUtilService dalamudUtil, ILoggerProvider loggerProvider,
         PairManager pairManager, ServerConfigurationManager serverManager, SinusMediator mediator,
-        TokenProvider tokenProvider, SinusConfigService sinusConfigService) : base(logger, mediator)
+        TokenProvider tokenProvider, SinusConfigService sinusConfigService, MultiConnectTokenService multiConnectTokenService) : base(logger, mediator)
     {
         _hubFactory = hubFactory;
         _dalamudUtil = dalamudUtil;
@@ -67,6 +68,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         _serverManager = serverManager;
         _tokenProvider = tokenProvider;
         _sinusConfigService = sinusConfigService;
+        _multiConnectTokenService = multiConnectTokenService;
         _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _loggerProvider = loggerProvider;
@@ -95,7 +97,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         {
             _currentSinusClient = new MultiConnectSinusClient(_serverManager.CurrentServerIndex, _serverManager,
                 _pairManager, _dalamudUtil,
-                _loggerFactory, _loggerProvider, Mediator, _httpClient);
+                _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService);
             _currentSinusClient.DalamudUtilOnLogIn();
         }
     }
@@ -186,6 +188,18 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     public SystemInfoDto SystemInfoDto { get; private set; } = new();
 
     public string UID => CurrentConnectionDto?.User.UID ?? string.Empty;
+
+    public int[] ConnectedServerIndexes {
+        get
+        {
+            if (_useMultiConnect && _currentSinusClient != null)
+            {
+                return [_currentSinusClient.ServerIndex];
+            }
+
+            return [_serverManager.CurrentServerIndex];
+        }
+    }
 
     public async Task<bool> CheckClientHealth()
     {
@@ -480,7 +494,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     {
         _currentSinusClient ??= new MultiConnectSinusClient(_serverManager.CurrentServerIndex, _serverManager,
             _pairManager, _dalamudUtil,
-            _loggerFactory, _loggerProvider, Mediator, _httpClient);
+            _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService);
 
         await _currentSinusClient.CreateConnectionsAsync().ConfigureAwait(false);
     }
