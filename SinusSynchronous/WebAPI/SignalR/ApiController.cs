@@ -473,7 +473,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             cts.CancelAfter(TimeSpan.FromSeconds(5));
             _ = Task.Run(async () =>
             {
-                await GetOrCreateForServer(serverIndex).CyclePauseAsync(userData).ConfigureAwait(false);
+                await GetOrCreateForServer(serverIndex).CyclePauseAsync(serverIndex, userData).ConfigureAwait(false);
             }, cts.Token);
             return Task.CompletedTask;
         }
