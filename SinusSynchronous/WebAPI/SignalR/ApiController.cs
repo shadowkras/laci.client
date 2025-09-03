@@ -14,12 +14,14 @@ using SinusSynchronous.SinusConfiguration;
 using SinusSynchronous.SinusConfiguration.Models;
 using SinusSynchronous.WebAPI.SignalR;
 using SinusSynchronous.WebAPI.SignalR.Utils;
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace SinusSynchronous.WebAPI;
+using ServerIndex = int;
 
 #pragma warning disable MA0040
-public sealed partial class ApiController : DisposableMediatorSubscriberBase, ISinusHubClient
+public sealed partial class ApiController : DisposableMediatorSubscriberBase
 {
     public const string MainServer = "Sinus Synchronous";
     public const string MainServiceUri = "wss://sinus.syrilai.dev";
@@ -52,9 +54,8 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     /// usage of ServerConfigurationManager#Current server
     /// Down the line, we move this into a list or a Map of active servers.
     /// </summary>
-    private MultiConnectSinusClient? _currentSinusClient;
+    private readonly ConcurrentDictionary<ServerIndex, MultiConnectSinusClient> _sinusClients = new();
 
-    private bool _useMultiConnect = true;
     private bool _naggedAboutLod = false;
 
     public ApiController(ILogger<ApiController> logger, ILoggerFactory loggerFactory, HttpClient httpClient,
@@ -74,14 +75,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         _loggerProvider = loggerProvider;
         _connectionCancellationTokenSource = new CancellationTokenSource();
 
-        if (!_useMultiConnect)
+        if (!UseMultiConnect)
         {
             Mediator.Subscribe<DalamudLoginMessage>(this, (_) => DalamudUtilOnLogIn());
             Mediator.Subscribe<DalamudLogoutMessage>(this, (_) => DalamudUtilOnLogOut());
             Mediator.Subscribe<HubClosedMessage>(this, (msg) => SinusHubOnClosed(msg.Exception));
             Mediator.Subscribe<HubReconnectedMessage>(this, (msg) => _ = SinusHubOnReconnectedAsync());
             Mediator.Subscribe<HubReconnectingMessage>(this, (msg) => SinusHubOnReconnecting(msg.Exception));
-            Mediator.Subscribe<CyclePauseMessage>(this, (msg) => _ = CyclePauseAsync(msg.UserData));
+            Mediator.Subscribe<CyclePauseMessage>(this, (msg) => _ = CyclePauseAsync(msg.ServerIndex, msg.UserData));
             Mediator.Subscribe<CensusUpdateMessage>(this, (msg) => _lastCensus = msg);
             Mediator.Subscribe<PauseMessage>(this, (msg) => _ = PauseAsync(msg.UserData));
 
@@ -95,23 +96,24 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         }
         else
         {
-            _currentSinusClient = new MultiConnectSinusClient(_serverManager.CurrentServerIndex, _serverManager,
-                _pairManager, _dalamudUtil,
-                _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService);
-            _currentSinusClient.DalamudUtilOnLogIn();
+            // TODO
+            // Auto connect every server
+            GetOrCreateForServer(_serverManager.CurrentServerIndex).DalamudUtilOnLogIn();
         }
     }
+
+    private bool UseMultiConnect => _serverManager.EnableMultiConnect;
 
     public string AuthFailureMessage
     {
         get
         {
-            if (this._useMultiConnect)
+            if (this.UseMultiConnect)
             {
-                return _currentSinusClient.AuthFailureMessage;
+                return GetClientForServer(_serverManager.CurrentServerIndex)?.AuthFailureMessage ?? string.Empty;
             }
 
-            return _authFailureMessage;
+            return _authFailureMessage ?? string.Empty;
         }
         private set
         {
@@ -123,9 +125,10 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     {
         get
         {
-            if (_useMultiConnect)
+            if (UseMultiConnect)
             {
-                return _currentSinusClient?.ConnectionDto;
+                // For now, display for the one selected in drop-down. Later, we will have to do this per-server
+                return GetClientForServer(_serverManager.CurrentServerIndex)?.ConnectionDto;
             }
 
             return _connectionDto;
@@ -136,29 +139,36 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
 
     public string DisplayName => CurrentConnectionDto?.User.AliasOrUID ?? string.Empty;
 
-    public bool IsConnected
-    {
-        get
-        {
-            if (_useMultiConnect)
-            {
-                return _currentSinusClient?._serverState == ServerState.Connected;
-            }
+    public bool IsConnected => ServerState == ServerState.Connected;
 
-            return ServerState == ServerState.Connected;
-        }
+    public bool IsServerConnected(int index)
+    {
+        return GetClientForServer(index)?._serverState == ServerState.Connected;
     }
 
     public int OnlineUsers
     {
         get
         {
-            if (_useMultiConnect)
+            if (UseMultiConnect)
             {
-                return _currentSinusClient?.SystemInfoDto?.OnlineUsers ?? 0;
+                // For now, let's just sum each of them.
+                return _sinusClients.Sum(entry => entry.Value.SystemInfoDto?.OnlineUsers ?? 0);
             }
 
             return SystemInfoDto.OnlineUsers;
+        }
+    }
+    
+    public int GetOnlineUsersForServer(ServerIndex index) {
+        return GetClientForServer(index)?.SystemInfoDto?.OnlineUsers ?? 0;
+    }
+
+    public bool AnyServerConnected
+    {
+        get
+        {
+            return _sinusClients.Any(client => client.Value._serverState == ServerState.Connected);
         }
     }
 
@@ -171,9 +181,10 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     {
         get
         {
-            if (_useMultiConnect)
+            if (UseMultiConnect)
             {
-                return _currentSinusClient?._serverState ?? ServerState.Offline;
+                // For now, display for the one selected in drop-down. Later, we will have to do this per-server
+                return GetClientForServer(_serverManager.CurrentServerIndex)?._serverState ?? ServerState.Offline;
             }
 
             return _serverState;
@@ -192,39 +203,40 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     public int[] ConnectedServerIndexes {
         get
         {
-            if (_useMultiConnect && _currentSinusClient != null)
+            if (UseMultiConnect)
             {
-                return [_currentSinusClient.ServerIndex];
+                return [.._sinusClients.Keys];
             }
 
             return [_serverManager.CurrentServerIndex];
         }
     }
 
-    public async Task<bool> CheckClientHealth()
+    public async Task<bool> CheckClientHealth(ServerIndex serverIndex)
     {
-        if (_useMultiConnect)
+        if (UseMultiConnect)
         {
-            return await _currentSinusClient!.CheckClientHealth().ConfigureAwait(false);
+            return await GetOrCreateForServer(serverIndex).CheckClientHealth().ConfigureAwait(false);
         }
 
         return await _sinusHub!.InvokeAsync<bool>(nameof(CheckClientHealth)).ConfigureAwait(false);
     }
 
-    public async Task CreateConnectionsAsync()
+    public async Task PauseConnectionAsync(ServerIndex serverIndex)
     {
-        if (_useMultiConnect)
+        _sinusClients.TryRemove(serverIndex, out MultiConnectSinusClient? removed);
+        if (removed != null)
         {
-            // Might have to destroy old one!
-            if (_currentSinusClient != null && _currentSinusClient.ServerIndex != _serverManager.CurrentServerIndex)
-            {
-                _serverManager.GetServerByIndex(_currentSinusClient.ServerIndex).FullPause = true;
-                _serverManager.Save();
-                await _currentSinusClient.DisposeAsync().ConfigureAwait(false);
-                _currentSinusClient = null;
-            }
+            await removed.DisposeAsync().ConfigureAwait(false);
+        }
 
-            await ConnectMultiClient().ConfigureAwait(false);
+    }
+    
+    public async Task CreateConnectionsAsync(ServerIndex serverIndex)
+    {
+        if (UseMultiConnect)
+        {
+            await ConnectMultiClient(serverIndex).ConfigureAwait(false);
             return;
         }
 
@@ -453,15 +465,15 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         }
     }
 
-    public Task CyclePauseAsync(UserData userData)
+    public Task CyclePauseAsync(ServerIndex serverIndex, UserData userData)
     {
-        if (_useMultiConnect)
+        if (UseMultiConnect)
         {
             CancellationTokenSource cts = new();
             cts.CancelAfter(TimeSpan.FromSeconds(5));
             _ = Task.Run(async () =>
             {
-                await _currentSinusClient!.CyclePauseAsync(userData).ConfigureAwait(false);
+                await GetOrCreateForServer(serverIndex).CyclePauseAsync(userData).ConfigureAwait(false);
             }, cts.Token);
             return Task.CompletedTask;
         }
@@ -474,7 +486,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
                 var pair = _pairManager.GetOnlineUserPairs(_serverManager.CurrentServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
                 var perm = pair.UserPair!.OwnPermissions;
                 perm.SetPaused(paused: true);
-                await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+                await UserSetPairPermissions(serverIndex, new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
                 // wait until it's changed
                 while (pair.UserPair!.OwnPermissions != perm)
                 {
@@ -483,28 +495,46 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
                 }
 
                 perm.SetPaused(paused: false);
-                await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+                await UserSetPairPermissions(serverIndex,new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
             }, cts.Token).ContinueWith((t) => cts.Dispose());
 
             return Task.CompletedTask;
         }
     }
 
-    private async Task ConnectMultiClient()
+    private MultiConnectSinusClient CreateNewClient(ServerIndex serverIndex)
     {
-        _currentSinusClient ??= new MultiConnectSinusClient(_serverManager.CurrentServerIndex, _serverManager,
-            _pairManager, _dalamudUtil,
+        return new MultiConnectSinusClient(serverIndex, _serverManager, _pairManager, _dalamudUtil,
             _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService);
+    }
 
-        await _currentSinusClient.CreateConnectionsAsync().ConfigureAwait(false);
+    private MultiConnectSinusClient? GetClientForServer(ServerIndex serverIndex)
+    {
+        _sinusClients.TryGetValue(serverIndex, out var client);
+        return client;
+    }
+    
+    private MultiConnectSinusClient GetOrCreateForServer(ServerIndex serverIndex)
+    {
+        return _sinusClients.GetOrAdd(serverIndex, CreateNewClient);
+    }
+
+    private Task ConnectMultiClient(ServerIndex serverIndex)
+    {
+
+        return GetOrCreateForServer(serverIndex).CreateConnectionsAsync();
     }
 
     private async Task PauseAsync(UserData userData)
     {
+        if (UseMultiConnect)
+        {
+            throw new InvalidOperationException("PauseAsync: Not supported for _multiConnect, please call multi connect sinus client instead!");
+        }
         var pair = _pairManager.GetOnlineUserPairs(_serverManager.CurrentServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
         var perm = pair.UserPair!.OwnPermissions;
         perm.SetPaused(paused: true);
-        await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+        await UserSetPairPermissions(_serverManager.CurrentServerIndex, new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
     }
 
     public Task<ConnectionDto> GetConnectionDto() => GetConnectionDtoAsync(true);
@@ -519,7 +549,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
     protected override void Dispose(bool disposing)
     {
         // We can always just dispose this - even if not used
-        _currentSinusClient?.Dispose();
+        foreach (MultiConnectSinusClient multiConnectSinusClient in _sinusClients.Values)
+        {
+            multiConnectSinusClient.Dispose();
+        }
+        _sinusClients.Clear();
 
         base.Dispose(disposing);
 
@@ -528,18 +562,18 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         _connectionCancellationTokenSource?.Cancel();
     }
 
-    private async Task ClientHealthCheckAsync(CancellationToken ct)
+    private async Task ClientHealthCheckAsync(ServerIndex serverIndex, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested && _sinusHub != null)
         {
             await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
             Logger.LogDebug("Checking Client Health State");
 
-            bool requireReconnect = await RefreshTokenAsync(ct).ConfigureAwait(false);
+            bool requireReconnect = await RefreshTokenAsync(serverIndex, ct).ConfigureAwait(false);
 
             if (requireReconnect) break;
 
-            _ = await CheckClientHealth().ConfigureAwait(false);
+            _ = await CheckClientHealth(serverIndex).ConfigureAwait(false);
         }
     }
 
@@ -552,7 +586,8 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         if (auth?.AutoLogin ?? false)
         {
             Logger.LogInformation("Logging into {chara}", charaName);
-            _ = Task.Run(CreateConnectionsAsync);
+            // Not called for multi connect, so we just pass current server
+            _ = Task.Run(() => CreateConnectionsAsync(_serverManager.CurrentServerIndex));
         }
         else
         {
@@ -606,7 +641,8 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         _healthCheckTokenSource?.Cancel();
         _healthCheckTokenSource?.Dispose();
         _healthCheckTokenSource = new CancellationTokenSource();
-        _ = ClientHealthCheckAsync(_healthCheckTokenSource.Token);
+        // Not called for multi connect, so we just pass current server
+        _ = ClientHealthCheckAsync(_serverManager.CurrentServerIndex, _healthCheckTokenSource.Token);
 
         _initialized = true;
     }
@@ -694,7 +730,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
             $"Connection interrupted, reconnecting to {_serverManager.CurrentServer.ServerName}")));
     }
 
-    private async Task<bool> RefreshTokenAsync(CancellationToken ct)
+    private async Task<bool> RefreshTokenAsync(ServerIndex serverIndex, CancellationToken ct)
     {
         bool requireReconnect = false;
         try
@@ -705,7 +741,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
                 Logger.LogDebug("Reconnecting due to updated token");
 
                 _doNotNotifyOnNextInfo = true;
-                await CreateConnectionsAsync().ConfigureAwait(false);
+                await CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
                 requireReconnect = true;
             }
         }
@@ -719,7 +755,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase, IS
         {
             Logger.LogWarning(ex, "Could not refresh token, forcing reconnect");
             _doNotNotifyOnNextInfo = true;
-            await CreateConnectionsAsync().ConfigureAwait(false);
+            await CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
             requireReconnect = true;
         }
 

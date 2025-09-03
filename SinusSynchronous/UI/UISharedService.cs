@@ -623,7 +623,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
         AttachToolTip(helpText);
     }
 
-    public void DrawOAuth(ServerStorage selectedServer)
+    public void DrawOAuth(int serverIndex, ServerStorage selectedServer)
     {
         var oauthToken = selectedServer.OAuthToken;
         _ = ImRaii.PushIndent(10f);
@@ -715,8 +715,9 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                 {
                     if (IconTextButton(FontAwesomeIcon.Exclamation, "Renew OAuth2 token manually") && CtrlPressed())
                     {
+                        // TODO change to multi connect token provider
                         _ = _tokenProvider.TryUpdateOAuth2LoginTokenAsync(selectedServer, forced: true)
-                            .ContinueWith((_) => _apiController.CreateConnectionsAsync());
+                            .ContinueWith((_) => _apiController.CreateConnectionsAsync(serverIndex));
                     }
                 }
                 DrawHelpText("Hold CTRL to manually refresh your OAuth2 token. Normally you do not need to do this.");
@@ -764,7 +765,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                             var token = await _serverConfigurationManager.GetDiscordOAuthToken(url!, selectedServer.ServerUri, CancellationToken.None).ConfigureAwait(false);
                             selectedServer.OAuthToken = token;
                             _serverConfigurationManager.Save();
-                            await _apiController.CreateConnectionsAsync().ConfigureAwait(false);
+                            await _apiController.CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
                         });
                 }
             }
@@ -893,7 +894,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                             _serverConfigurationManager.Save();
                         }
 
-                        _ = _apiController.CreateConnectionsAsync();
+                        _ = _apiController.CreateConnectionsAsync(_serverSelectionIndex);
                     }
                 }
             }
@@ -904,7 +905,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                 if (IconTextButton(FontAwesomeIcon.Link, text))
                 {
                     _serverConfigurationManager.SelectServer(_serverSelectionIndex);
-                    _ = _apiController.CreateConnectionsAsync();
+                    _ = _apiController.CreateConnectionsAsync(_serverSelectionIndex);
                 }
             }
 
