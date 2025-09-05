@@ -196,6 +196,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         }
     }
 
+    [Obsolete("Can be removed once we clean out old client code")]
     public SystemInfoDto SystemInfoDto { get; private set; } = new();
 
     public string UID => CurrentConnectionDto?.User.UID ?? string.Empty;
@@ -210,6 +211,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
             return [_serverManager.CurrentServerIndex];
         }
+    }
+
+    public int GetMaxGroupsJoinedByUser(ServerIndex serverIndex)
+    {
+        return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;
     }
 
     public async Task<bool> CheckClientHealth(ServerIndex serverIndex)
