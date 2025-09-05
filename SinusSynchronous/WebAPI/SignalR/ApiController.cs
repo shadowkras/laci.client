@@ -218,6 +218,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;
     }
 
+    public string GetUidByServer(ServerIndex serverIndex)
+    {
+        return GetClientForServer(serverIndex)?.UID ?? string.Empty;
+    }
+
     public async Task<bool> CheckClientHealth(ServerIndex serverIndex)
     {
         if (UseMultiConnect)
