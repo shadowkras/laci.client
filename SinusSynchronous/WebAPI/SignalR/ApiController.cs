@@ -97,7 +97,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         else
         {
             // TODO
-            // Auto connect every server
+            // Auto connect every server. Ideally in sequence, in an extra method
             GetOrCreateForServer(_serverManager.CurrentServerIndex).DalamudUtilOnLogIn();
         }
     }
