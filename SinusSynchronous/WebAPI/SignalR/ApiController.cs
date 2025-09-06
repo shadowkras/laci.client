@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Dalamud.Utility;
+using Microsoft.Extensions.Logging;
 using SinusSynchronous.API.Data;
 using SinusSynchronous.API.Dto;
 using SinusSynchronous.PlayerData.Pairs;
@@ -46,59 +47,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         _loggerFactory = loggerFactory;
         _loggerProvider = loggerProvider;
 
-        // TODO
-        // Auto connect every server. Ideally in sequence, in an extra method
-        GetOrCreateForServer(_serverManager.CurrentServerIndex).DalamudUtilOnLogIn();
-    }
-
-    // TODO all in this region still needs to be reworked to not use current server
-    #region StillBasedOnCurrentServer
-
-    [Obsolete("Use GetUidByServer with server index instead")]
-    public string DisplayName => CurrentConnectionDto?.User.AliasOrUID ?? string.Empty;
-
-    [Obsolete("Use IsServerAlive with server index instead")]
-    public bool ServerAlive => ServerState is ServerState.Connected or ServerState.RateLimited
-        or ServerState.Unauthorized or ServerState.Disconnected;
-    
-    [Obsolete("Use GetAuthFailureMessageByServer with server index instead")]
-    public string AuthFailureMessage
-    {
-        get
-        {
-            return GetClientForServer(_serverManager.CurrentServerIndex)?.AuthFailureMessage ?? string.Empty;
-        }
-    }
-    
-    private ConnectionDto? CurrentConnectionDto
-    {
-        get
-        {
-            // For now, display for the one selected in drop-down. Later, we will have to do this per-server
-            return GetClientForServer(_serverManager.CurrentServerIndex)?.ConnectionDto;
-        }
-    }
-    
-    public ServerInfo ServerInfo => CurrentConnectionDto?.ServerInfo ?? new ServerInfo();
-
-    [Obsolete("Use GetUidByServer with server index instead")]
-    public ServerState ServerState
-    {
-        get
-        {
-            return GetClientForServer(_serverManager.CurrentServerIndex)?._serverState ?? ServerState.Offline;
-        }
+        AutoConnectClients();
     }
 
     public ServerState GetServerState(ServerIndex index)
     {
         return GetClientForServer(index)?._serverState ?? ServerState.Offline;
     }
-
-    [Obsolete("Use GetServerState with server index instead")]
-    public string UID => CurrentConnectionDto?.User.UID ?? string.Empty;
-
-    #endregion
 
     public bool IsServerConnected(int index)
     {
@@ -182,6 +137,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     {
         return GetClientForServer(serverIndex)?.UID ?? string.Empty;
     }
+    
+    public string GetDisplayNameByServer(ServerIndex serverIndex)
+    {
+        return GetClientForServer(serverIndex)?.ConnectionDto?.User.AliasOrUID ?? string.Empty;
+    }
 
     public async Task PauseConnectionAsync(ServerIndex serverIndex)
     {
@@ -229,6 +189,22 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private Task ConnectMultiClient(ServerIndex serverIndex)
     {
         return GetOrCreateForServer(serverIndex).CreateConnectionsAsync();
+    }
+
+    private void AutoConnectClients()
+    {
+        // Fire and forget the auto connect. if something goes wrong, it'll be displayed in UI
+        _ = Task.Run(async () =>
+        {
+            foreach (int serverIndex in _serverManager.ServerIndexes)
+            {
+                var server = _serverManager.GetServerByIndex(serverIndex);
+                if (!server.FullPause)
+                {
+                    await GetOrCreateForServer(serverIndex).DalamudUtilOnLogIn().ConfigureAwait(false);
+                }
+            }
+        });
     }
 
     protected override void Dispose(bool disposing)
