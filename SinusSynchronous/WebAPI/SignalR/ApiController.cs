@@ -1,19 +1,13 @@
-﻿using Dalamud.Utility;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using SinusSynchronous.API.Data;
-using SinusSynchronous.API.Data.Extensions;
 using SinusSynchronous.API.Dto;
-using SinusSynchronous.API.Dto.User;
-using SinusSynchronous.API.SignalR;
 using SinusSynchronous.PlayerData.Pairs;
 using SinusSynchronous.Services;
 using SinusSynchronous.Services.Mediator;
 using SinusSynchronous.Services.ServerConfiguration;
 using SinusSynchronous.SinusConfiguration;
-using SinusSynchronous.SinusConfiguration.Models;
 using SinusSynchronous.WebAPI.SignalR.Utils;
 using System.Collections.Concurrent;
-using System.Reflection;
 
 namespace SinusSynchronous.WebAPI;
 using ServerIndex = int;
@@ -60,11 +54,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     // TODO all in this region still needs to be reworked to not use current server
     #region StillBasedOnCurrentServer
 
+    [Obsolete("Use GetUidByServer with server index instead")]
     public string DisplayName => CurrentConnectionDto?.User.AliasOrUID ?? string.Empty;
 
+    [Obsolete("Use IsServerAlive with server index instead")]
     public bool ServerAlive => ServerState is ServerState.Connected or ServerState.RateLimited
         or ServerState.Unauthorized or ServerState.Disconnected;
     
+    [Obsolete("Use GetAuthFailureMessageByServer with server index instead")]
     public string AuthFailureMessage
     {
         get
@@ -84,6 +81,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     
     public ServerInfo ServerInfo => CurrentConnectionDto?.ServerInfo ?? new ServerInfo();
 
+    [Obsolete("Use GetUidByServer with server index instead")]
     public ServerState ServerState
     {
         get
@@ -97,6 +95,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         return GetClientForServer(index)?._serverState ?? ServerState.Offline;
     }
 
+    [Obsolete("Use GetServerState with server index instead")]
     public string UID => CurrentConnectionDto?.User.UID ?? string.Empty;
 
     #endregion
@@ -104,6 +103,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     public bool IsServerConnected(int index)
     {
         return GetClientForServer(index)?._serverState == ServerState.Connected;
+    }
+
+    public bool IsServerAlive(int index)
+    {
+        var serverState = GetServerState(index);
+        return serverState is ServerState.Connected or ServerState.RateLimited
+            or ServerState.Unauthorized or ServerState.Disconnected;
     }
     
     public int OnlineUsers
@@ -160,6 +166,16 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     public int GetMaxGroupsJoinedByUser(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;
+    }
+    
+    public int GetMaxGroupsCreatedByUser(ServerIndex serverIndex)
+    {
+        return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsCreatedByUser ?? 0;
+    }
+    
+    public string? GetAuthFailureMessageByServer(ServerIndex serverIndex)
+    {
+        return GetClientForServer(serverIndex)?.AuthFailureMessage;
     }
 
     public string GetUidByServer(ServerIndex serverIndex)
