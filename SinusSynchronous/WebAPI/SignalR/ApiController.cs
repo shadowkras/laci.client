@@ -59,12 +59,9 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     // TODO all in this region still needs to be reworked to not use current server
     #region StillBasedOnCurrentServer
-    public DefaultPermissionsDto? DefaultPermissions => CurrentConnectionDto?.DefaultPreferredPermissions ?? null;
 
     public string DisplayName => CurrentConnectionDto?.User.AliasOrUID ?? string.Empty;
 
-    public bool IsConnected => ServerState == ServerState.Connected;
-    
     public bool ServerAlive => ServerState is ServerState.Connected or ServerState.RateLimited
         or ServerState.Unauthorized or ServerState.Disconnected;
     
@@ -83,12 +80,6 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             // For now, display for the one selected in drop-down. Later, we will have to do this per-server
             return GetClientForServer(_serverManager.CurrentServerIndex)?.ConnectionDto;
         }
-    }
-    
-    
-    public bool IsServerConnected(int index)
-    {
-        return GetClientForServer(index)?._serverState == ServerState.Connected;
     }
     
     public ServerInfo ServerInfo => CurrentConnectionDto?.ServerInfo ?? new ServerInfo();
@@ -110,6 +101,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     #endregion
 
+    public bool IsServerConnected(int index)
+    {
+        return GetClientForServer(index)?._serverState == ServerState.Connected;
+    }
+    
     public int OnlineUsers
     {
         get
@@ -120,6 +116,16 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     
     public int GetOnlineUsersForServer(ServerIndex index) {
         return GetClientForServer(index)?.SystemInfoDto?.OnlineUsers ?? 0;
+    }
+
+    public ServerInfo? GetServerInfoForServer(ServerIndex index)
+    {
+        return GetClientForServer(index)?.ConnectionDto?.ServerInfo;
+    }
+
+    public DefaultPermissionsDto? GetDefaultPermissionsForServer(ServerIndex index)
+    {
+        return GetClientForServer(index)?.ConnectionDto?.DefaultPreferredPermissions;
     }
 
     public ServerState GetServerStateForServer(ServerIndex index)
