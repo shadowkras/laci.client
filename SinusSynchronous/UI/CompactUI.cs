@@ -448,10 +448,10 @@ public class CompactUi : WindowMediatorSubscriberBase
 
             if (!string.Equals(displayName, uid, StringComparison.Ordinal))
             {
-                ImGui.TextColored(textColor, uid);
+                ImGui.TextColored(textColor, displayName);
                 if (ImGui.IsItemClicked())
                 {
-                    ImGui.SetClipboardText(uid);
+                    ImGui.SetClipboardText(displayName);
                 }
                 UiSharedService.AttachToolTip("Click to copy");
             }
