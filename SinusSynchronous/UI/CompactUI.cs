@@ -306,8 +306,11 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     private void DrawServerStatus()
     {
+        Vector2 rectMin;
+
         if (_apiController.ConnectedServerIndexes.Length > 1)
         {
+            rectMin = new Vector2(ImGui.GetWindowContentRegionMin().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
             using (_uiSharedService.UidFont.Push())
             {
                 var onlineText = _apiController.AnyServerConnected ? "Online" : "Offline";
@@ -315,13 +318,12 @@ public class CompactUi : WindowMediatorSubscriberBase
                 ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X) / 2 - (origTextSize.X / 2));
                 ImGui.TextColored(_apiController.AnyServerConnected ? ImGuiColors.ParsedGreen : ImGuiColors.DalamudRed, onlineText);
             }
-
-            DrawServerStatusTooltipAndToggle();
         }
         else
         {
             using (ImRaii.PushId("singleserveruid")) DrawUIDHeader(_apiController.ConnectedServerIndexes.FirstOrDefault());
             ImGui.Separator();
+            rectMin = new Vector2(ImGui.GetWindowContentRegionMin().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
         }
 
         if (_apiController.AnyServerConnected)
@@ -333,20 +335,21 @@ public class CompactUi : WindowMediatorSubscriberBase
             ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth()) / 2 - (userSize.X + textSize.X) / 2 - ImGui.GetStyle().ItemSpacing.X / 2);
             ImGui.AlignTextToFramePadding();
             ImGui.TextColored(ImGuiColors.ParsedGreen, userCount);
-            DrawServerStatusTooltipAndToggle();
 
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted("Users Online");
-            DrawServerStatusTooltipAndToggle();
         }
         else
         {
             ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() / 2 - ImGui.CalcTextSize("Not connected to any server").X / 2);
             ImGui.AlignTextToFramePadding();
             ImGui.TextColored(ImGuiColors.DalamudRed, "Not connected to any server");
-            DrawServerStatusTooltipAndToggle();
         }
+
+        var rectMax = new Vector2(ImGui.GetWindowContentRegionMax().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
+
+        DrawServerStatusTooltipAndToggle(rectMin, rectMax);
     }
 
     private void DrawUIDHeader(int serverId)
@@ -389,13 +392,16 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
     }
 
-    private void DrawServerStatusTooltipAndToggle()
+    private void DrawServerStatusTooltipAndToggle(Vector2 rectMin, Vector2 rectMax)
     {
-        if (ImGui.IsItemClicked())
+        if (!ImGui.IsMouseHoveringRect(rectMin, rectMax))
+            return;
+
+        ImGui.SetTooltip("Click to manage service connections");
+        if (ImGui.IsMouseClicked(ImGuiMouseButton.Left))
         {
             ToggleMultiServerSelect();
         }
-        UiSharedService.AttachToolTip("Manage service connections");
     }
 
     private void ToggleMultiServerSelect()
