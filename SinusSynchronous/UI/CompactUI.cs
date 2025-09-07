@@ -328,9 +328,11 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         if (_apiController.AnyServerConnected)
         {
+            var usersOnlineMessage = "Users Online";
+
             var userCount = _apiController.OnlineUsers.ToString(CultureInfo.InvariantCulture);
             var userSize = ImGui.CalcTextSize(userCount);
-            var textSize = ImGui.CalcTextSize("Users Online");
+            var textSize = ImGui.CalcTextSize(usersOnlineMessage);
 
             ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth()) / 2 - (userSize.X + textSize.X) / 2 - ImGui.GetStyle().ItemSpacing.X / 2);
             ImGui.AlignTextToFramePadding();
@@ -338,13 +340,15 @@ public class CompactUi : WindowMediatorSubscriberBase
 
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.TextUnformatted("Users Online");
+            ImGui.TextUnformatted(usersOnlineMessage);
         }
         else
         {
-            ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() / 2 - ImGui.CalcTextSize("Not connected to any server").X / 2);
+            var notConnectedMessage = "Not connected to any server";
+
+            ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() / 2 - ImGui.CalcTextSize(notConnectedMessage).X / 2);
             ImGui.AlignTextToFramePadding();
-            ImGui.TextColored(ImGuiColors.DalamudRed, "Not connected to any server");
+            ImGui.TextColored(ImGuiColors.DalamudRed, notConnectedMessage);
         }
 
         var rectMax = new Vector2(ImGui.GetWindowContentRegionMax().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
@@ -386,9 +390,12 @@ public class CompactUi : WindowMediatorSubscriberBase
                 UiSharedService.AttachToolTip("Click to copy");
             }
         }
-        else
+        else if (_apiController.GetServerState(serverId) is not (ServerState.Disconnected or ServerState.Offline))
         {
-            UiSharedService.ColorTextWrapped(GetServerErrorByServer(serverId), uidColor);
+            var errorText = GetServerErrorByServer(serverId);
+            var origTextSize = ImGui.CalcTextSize(errorText);
+            ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X) / 2 - (origTextSize.X / 2));
+            UiSharedService.ColorTextWrapped(errorText, uidColor);
         }
     }
 
@@ -596,10 +603,19 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         var config = _playerPerformanceConfigService.Current;
 
-        var playerLoadMemory = _cachedAnalysis.Sum(c => c.Value.Sum(c => c.Value.OriginalSize));
-        var playerLoadTriangles = _cachedAnalysis.Sum(c => c.Value.Sum(c => c.Value.Triangles));
+        var playerLoadMemory = _cachedAnalysis.Sum(c => c.Value.Sum(f => f.Value.OriginalSize));
+        var playerLoadTriangles = _cachedAnalysis.Sum(c => c.Value.Sum(f => f.Value.Triangles));
 
-        ImGui.TextUnformatted("Character Load Data");
+        var dataSectionTitle = "Character Load Data";
+        var origTextSizeX = ImGui.CalcTextSize(dataSectionTitle).X - ImGui.GetStyle().ItemSpacing.X;
+
+        using (_uiSharedService.IconFont.Push())
+        {
+            origTextSizeX += ImGui.CalcTextSize(FontAwesomeIcon.QuestionCircle.ToIconString()).X;
+        }
+
+        ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X) / 2 - (origTextSizeX / 2));
+        ImGui.TextUnformatted(dataSectionTitle);
         _uiSharedService.DrawHelpText("This information uses your own settings for the warning and auto-pause threshold for comparison." + Environment.NewLine
             + "This can be configured under Settings -> Performance.");
 
@@ -868,10 +884,10 @@ public class CompactUi : WindowMediatorSubscriberBase
         {
             ServerState.Connecting => "Attempting to connect to the server.",
             ServerState.Reconnecting => "Connection to server interrupted, attempting to reconnect to the server.",
-            ServerState.Disconnected => "You are currently disconnected from the Sinus Synchronous server.",
+            ServerState.Disconnected => "You are currently disconnected from this server.",
             ServerState.Disconnecting => "Disconnecting from the server",
             ServerState.Unauthorized => "Server Response: " + authFailureMessage,
-            ServerState.Offline => "Your selected Sinuzs Synchronous server is currently offline.",
+            ServerState.Offline => "This server is currently offline.",
             ServerState.VersionMisMatch =>
                 "Your plugin or the server you are connecting to is out of date. Please update your plugin now. If you already did so, contact the server provider to update their server to the latest version.",
             ServerState.RateLimited => "You are rate limited for (re)connecting too often. Disconnect, wait 10 minutes and try again.",
