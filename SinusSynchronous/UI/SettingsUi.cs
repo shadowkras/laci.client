@@ -2075,8 +2075,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
     }
 
-    
-
     private void UiSharedService_GposeEnd()
     {
         IsOpen = _wasOpen;
