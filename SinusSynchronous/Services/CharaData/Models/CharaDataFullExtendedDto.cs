@@ -12,7 +12,7 @@ public sealed record CharaDataFullExtendedDto : CharaDataFullDto
         HasMissingFiles = MissingFiles.Any();
     }
 
-    public int ServverIndex { get; set; }
+    public int ServerIndex { get; set; }
     public string FullId { get; set; }
     public bool HasMissingFiles { get; init; }
     public IReadOnlyCollection<GamePathEntry> MissingFiles { get; init; }
