@@ -374,12 +374,12 @@ public class CompactUi : WindowMediatorSubscriberBase
 
             if (!string.Equals(currentDisplayName, currentUid, StringComparison.Ordinal))
             {
-                var origTextSize = ImGui.CalcTextSize(currentUid);
+                var origTextSize = ImGui.CalcTextSize(currentDisplayName);
                 ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X) / 2 - (origTextSize.X / 2));
-                ImGui.TextColored(uidColor, currentUid);
+                ImGui.TextColored(uidColor, currentDisplayName);
                 if (ImGui.IsItemClicked())
                 {
-                    ImGui.SetClipboardText(currentUid);
+                    ImGui.SetClipboardText(currentDisplayName);
                 }
                 UiSharedService.AttachToolTip("Click to copy");
             }
