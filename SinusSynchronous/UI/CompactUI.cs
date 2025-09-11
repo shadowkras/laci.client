@@ -530,7 +530,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         using (ImRaii.PushColor(ImGuiCol.Text, color))
         {
-            if (_uiSharedService.IconButton(connectedIcon, serverId))
+            if (_uiSharedService.IconButton(connectedIcon, serverId.ToString()))
             {
                 if (_apiController.IsServerConnected(serverId))
                 {
