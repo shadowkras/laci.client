@@ -179,13 +179,13 @@ internal sealed partial class CharaDataHubUi
         if (!_uiSharedService.IsInGpose)
         {
             ImGuiHelpers.ScaledDummy(5);
-            UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 320);
+            UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow);
             ImGuiHelpers.ScaledDummy(5);
         }
         else if(string.IsNullOrEmpty(_charaDataGposeTogetherManager.CurrentGPoseLobbyId))
         {
             ImGuiHelpers.ScaledDummy(5);
-            UiSharedService.DrawGroupedCenteredColorText("Create or Join a Gpose Together lobby to assign characters.", ImGuiColors.DalamudYellow, 320);
+            UiSharedService.DrawGroupedCenteredColorText("Create or Join a Gpose Together lobby to assign characters.", ImGuiColors.DalamudYellow);
             ImGuiHelpers.ScaledDummy(5);
         }
         else
