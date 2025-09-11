@@ -21,7 +21,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     private readonly DalamudUtilService _dalamudUtil;
     private readonly PairManager _pairManager;
-    private readonly ServerConfigurationManager _serverManager;
+    private readonly ServerConfigurationManager _serverConfigManager;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILoggerProvider _loggerProvider;
     private readonly MultiConnectTokenService _multiConnectTokenService;
@@ -37,11 +37,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private readonly ConcurrentDictionary<ServerIndex, MultiConnectSinusClient> _sinusClients = new();
 
     public ApiController(ILogger<ApiController> logger, ILoggerFactory loggerFactory, DalamudUtilService dalamudUtil, ILoggerProvider loggerProvider,
-        PairManager pairManager, ServerConfigurationManager serverManager, SinusMediator mediator, MultiConnectTokenService multiConnectTokenService, SinusConfigService sinusConfigService) : base(logger, mediator)
+        PairManager pairManager, ServerConfigurationManager serverConfigManager, SinusMediator mediator, MultiConnectTokenService multiConnectTokenService, SinusConfigService sinusConfigService) : base(logger, mediator)
     {
         _dalamudUtil = dalamudUtil;
         _pairManager = pairManager;
-        _serverManager = serverManager;
+        _serverConfigManager = serverConfigManager;
         _multiConnectTokenService = multiConnectTokenService;
         _sinusConfigService = sinusConfigService;
         _loggerFactory = loggerFactory;
@@ -60,6 +60,16 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         return GetClientForServer(index)?._serverState == ServerState.Connected;
     }
 
+    public string GetServerNameByIndex(ServerIndex index)
+    {
+        return _serverConfigManager.GetServerByIndex(index).ServerName ?? string.Empty;
+    }
+
+    public int GetOnlineUsersForServer(ServerIndex index)
+    {
+        return GetClientForServer(index)?.SystemInfoDto?.OnlineUsers ?? 0;
+    }
+
     public bool IsServerAlive(int index)
     {
         var serverState = GetServerState(index);
@@ -73,10 +83,6 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         {
             return _sinusClients.Sum(entry => entry.Value.SystemInfoDto?.OnlineUsers ?? 0);
         }
-    }
-    
-    public int GetOnlineUsersForServer(ServerIndex index) {
-        return GetClientForServer(index)?.SystemInfoDto?.OnlineUsers ?? 0;
     }
 
     public ServerInfo? GetServerInfoForServer(ServerIndex index)
@@ -150,7 +156,6 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         {
             await removed.DisposeAsync().ConfigureAwait(false);
         }
-
     }
     
     public async Task CreateConnectionsAsync(ServerIndex serverIndex)
@@ -171,7 +176,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     private MultiConnectSinusClient CreateNewClient(ServerIndex serverIndex)
     {
-        return new MultiConnectSinusClient(serverIndex, _serverManager, _pairManager, _dalamudUtil,
+        return new MultiConnectSinusClient(serverIndex, _serverConfigManager, _pairManager, _dalamudUtil,
             _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService, _sinusConfigService);
     }
 
@@ -196,9 +201,9 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         // Fire and forget the auto connect. if something goes wrong, it'll be displayed in UI
         _ = Task.Run(async () =>
         {
-            foreach (int serverIndex in _serverManager.ServerIndexes)
+            foreach (int serverIndex in _serverConfigManager.ServerIndexes)
             {
-                var server = _serverManager.GetServerByIndex(serverIndex);
+                var server = _serverConfigManager.GetServerByIndex(serverIndex);
                 if (!server.FullPause)
                 {
                     await GetOrCreateForServer(serverIndex).DalamudUtilOnLogIn().ConfigureAwait(false);
