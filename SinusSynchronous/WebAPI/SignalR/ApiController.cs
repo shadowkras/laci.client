@@ -97,9 +97,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     {
         get
         {
-            // For now, display for the one selected in drop-down. Later, we will have to do this per-server
             return GetClientForServer(_serverManager.CurrentServerIndex)?._serverState ?? ServerState.Offline;
         }
+    }
+
+    public ServerState GetServerState(ServerIndex index)
+    {
+        return GetClientForServer(index)?._serverState ?? ServerState.Offline;
     }
 
     public string UID => CurrentConnectionDto?.User.UID ?? string.Empty;
