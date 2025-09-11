@@ -28,7 +28,6 @@ internal sealed partial class CharaDataHubUi
         }
 
         var updateDto = _charaDataManager.GetUpdateDto(dataDto.Id);
-
         if (updateDto == null)
         {
             UiSharedService.DrawGroupedCenteredColorText("Something went awfully wrong and there's no update DTO. Try updating Character Data via the button above.", ImGuiColors.DalamudYellow);
@@ -563,7 +562,8 @@ internal sealed partial class CharaDataHubUi
 
     private void DrawMcdOnline()
     {
-        _uiSharedService.BigText("Sinus Character Data Online");
+        var serverName = _apiController.GetServerNameByIndex(_selectedServerIndex);
+        _uiSharedService.BigText($"{serverName} Character Data Online");
 
         DrawHelpFoldout("In this tab you can create, view and edit your own Sinus Character Data that is stored on the server." + Environment.NewLine + Environment.NewLine
             + "Sinus Character Data Online functions similar to the previous MCDF standard for exporting your character, except that you do not have to send a file to the other person but solely a code." + Environment.NewLine + Environment.NewLine
@@ -800,6 +800,11 @@ internal sealed partial class CharaDataHubUi
         {
             using (ImRaii.Disabled(updateDto.AccessType != AccessTypeDto.Individuals))
             {
+                float itemHeight = ImGui.GetTextLineHeightWithSpacing();
+                float padding = 5f;
+                int itemCount = Math.Max(Math.Max(updateDto.UserList.Count(), updateDto.GroupList.Count()), 1);
+                float listHeight = (itemCount * itemHeight) + padding;
+
                 using (ImRaii.PushId("user"))
                 {
                     using (ImRaii.Group())
@@ -821,14 +826,21 @@ internal sealed partial class CharaDataHubUi
                         _uiSharedService.DrawHelpText("Users added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
                             + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                        using (var lb = ImRaii.ListBox("Allowed Individuals"))
+                        using (var lb = ImRaii.ListBox("Allowed Individuals", new Vector2(0, listHeight)))
                         {
-                            foreach (var user in updateDto.UserList)
+                            if (!updateDto.UserList.Any())
                             {
-                                var userString = string.IsNullOrEmpty(user.Alias) ? user.UID : $"{user.Alias} ({user.UID})";
-                                if (ImGui.Selectable(userString, string.Equals(user.UID, _selectedSpecificUserIndividual, StringComparison.Ordinal)))
+                                ImGui.TextUnformatted("No specific individuals added yet.");
+                            }
+                            else
+                            {
+                                foreach (var user in updateDto.UserList)
                                 {
-                                    _selectedSpecificUserIndividual = user.UID;
+                                    var userString = string.IsNullOrEmpty(user.Alias) ? user.UID : $"{user.Alias} ({user.UID})";
+                                    if (ImGui.Selectable(userString, string.Equals(user.UID, _selectedSpecificUserIndividual, StringComparison.Ordinal)))
+                                    {
+                                        _selectedSpecificUserIndividual = user.UID;
+                                    }
                                 }
                             }
                         }
@@ -890,14 +902,21 @@ internal sealed partial class CharaDataHubUi
                         _uiSharedService.DrawHelpText("Users in Syncshells added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
                             + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                        using (var lb = ImRaii.ListBox("Allowed Syncshells"))
+                        using (var lb = ImRaii.ListBox("Allowed Syncshells", new Vector2(0, listHeight)))
                         {
-                            foreach (var group in updateDto.GroupList)
+                            if (!updateDto.GroupList.Any())
                             {
-                                var userString = string.IsNullOrEmpty(group.Alias) ? group.GID : $"{group.Alias} ({group.GID})";
-                                if (ImGui.Selectable(userString, string.Equals(group.GID, _selectedSpecificGroupIndividual, StringComparison.Ordinal)))
+                                ImGui.TextUnformatted("No specific Syncshells added yet.");
+                            }
+                            else
+                            {
+                                foreach (var group in updateDto.GroupList)
                                 {
-                                    _selectedSpecificGroupIndividual = group.GID;
+                                    var userString = string.IsNullOrEmpty(group.Alias) ? group.GID : $"{group.Alias} ({group.GID})";
+                                    if (ImGui.Selectable(userString, string.Equals(group.GID, _selectedSpecificGroupIndividual, StringComparison.Ordinal)))
+                                    {
+                                        _selectedSpecificGroupIndividual = group.GID;
+                                    }
                                 }
                             }
                         }

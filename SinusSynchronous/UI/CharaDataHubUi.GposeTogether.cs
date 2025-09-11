@@ -97,6 +97,7 @@ internal sealed partial class CharaDataHubUi
         {
             ImGuiHelpers.ScaledDummy(5);
             UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 320);
+            ImGuiHelpers.ScaledDummy(5);
         }
 
         using (ImRaii.Disabled(string.IsNullOrEmpty(_charaDataGposeTogetherManager.CurrentGPoseLobbyId)))
