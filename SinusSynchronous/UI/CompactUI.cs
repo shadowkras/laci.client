@@ -151,7 +151,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         SizeConstraints = new WindowSizeConstraints()
         {
-            MinimumSize = new Vector2(375, 400),
+            MinimumSize = new Vector2(375, 420),
             MaximumSize = new Vector2(600, 2000),
         };
     }
@@ -228,7 +228,6 @@ public class CompactUi : WindowMediatorSubscriberBase
             ImGui.Separator();
         }
 
-        ImGui.Separator();
         float pairlistEnd = ImGui.GetCursorPosY();
         using (ImRaii.PushId("transfers")) DrawTransfers();
         _transferPartHeight = ImGui.GetCursorPosY() - pairlistEnd - ImGui.GetTextLineHeight();
