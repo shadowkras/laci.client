@@ -109,7 +109,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         SizeConstraints = new WindowSizeConstraints()
         {
             MinimumSize = new Vector2(800, 400),
-            MaximumSize = new Vector2(800, 2000),
+            MaximumSize = new Vector2(1200, 2000),
         };
 
         Mediator.Subscribe<OpenSettingsUiMessage>(this, (_) => Toggle());
@@ -2075,7 +2075,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
     }
 
-    private void CreateTabItem(string name, Action drawAction)
+    private static void CreateTabItem(string name, Action drawAction)
     {
         using (var tabItem = ImRaii.TabItem(name))
         {

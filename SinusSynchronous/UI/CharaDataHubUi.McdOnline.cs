@@ -144,6 +144,28 @@ internal sealed partial class CharaDataHubUi
     private void DrawEditCharaDataAccessAndSharing(CharaDataExtendedUpdateDto updateDto)
     {
         _uiSharedService.BigText("Access and Sharing");
+        //test
+
+        UiSharedService.ScaledNextItemWidth(200);
+        var dtoShareType = updateDto.ShareType;
+        if (ImGui.BeginCombo("Sharing", GetShareTypeString(dtoShareType)))
+        {
+            foreach (var shareType in Enum.GetValues(typeof(ShareTypeDto)).Cast<ShareTypeDto>())
+            {
+                if (ImGui.Selectable(GetShareTypeString(shareType), shareType == dtoShareType))
+                {
+                    updateDto.ShareType = shareType;
+                }
+            }
+
+            ImGui.EndCombo();
+        }
+        _uiSharedService.DrawHelpText("This regulates how you want to distribute this character data." + UiSharedService.TooltipSeparator
+            + "Code Only: People require to have the code to download this character data" + Environment.NewLine
+            + "Shared: People that are allowed through 'Access Restrictions' will have this character data entry displayed in 'Shared with You' (it can also be accessed through the code)" + UiSharedService.TooltipSeparator
+            + "Note: Shared with Access Restriction 'Everyone' is the same as shared with Access Restriction 'All Pairs', it will not show up for everyone but just your pairs.");
+
+        ImGuiHelpers.ScaledDummy(10f);
 
         UiSharedService.ScaledNextItemWidth(200);
         var dtoAccessType = updateDto.AccessType;
@@ -169,27 +191,6 @@ internal sealed partial class CharaDataHubUi
             + "Note: Directly specified Individuals or Syncshells in the 'Specific Individuals / Syncshells' list will be able to access your character data regardless of pause or pair state.");
 
         DrawSpecific(updateDto);
-
-        UiSharedService.ScaledNextItemWidth(200);
-        var dtoShareType = updateDto.ShareType;
-        if (ImGui.BeginCombo("Sharing", GetShareTypeString(dtoShareType)))
-        {
-            foreach (var shareType in Enum.GetValues(typeof(ShareTypeDto)).Cast<ShareTypeDto>())
-            {
-                if (ImGui.Selectable(GetShareTypeString(shareType), shareType == dtoShareType))
-                {
-                    updateDto.ShareType = shareType;
-                }
-            }
-
-            ImGui.EndCombo();
-        }
-        _uiSharedService.DrawHelpText("This regulates how you want to distribute this character data." + UiSharedService.TooltipSeparator
-            + "Code Only: People require to have the code to download this character data" + Environment.NewLine
-            + "Shared: People that are allowed through 'Access Restrictions' will have this character data entry displayed in 'Shared with You' (it can also be accessed through the code)" + UiSharedService.TooltipSeparator
-            + "Note: Shared with Access Restriction 'Everyone' is the same as shared with Access Restriction 'All Pairs', it will not show up for everyone but just your pairs.");
-
-        ImGuiHelpers.ScaledDummy(10f);
     }
 
     private void DrawEditCharaDataAppearance(CharaDataFullExtendedDto dataDto, CharaDataExtendedUpdateDto updateDto)
@@ -284,13 +285,14 @@ internal sealed partial class CharaDataHubUi
             ImGui.InputText("##CharaDataCode", ref code, 255, ImGuiInputTextFlags.ReadOnly);
         }
         ImGui.SameLine();
-        ImGui.TextUnformatted("Chara Data Code");
+        ImGui.TextUnformatted("Character Data Sharing Code");
         ImGui.SameLine();
         if (_uiSharedService.IconButton(FontAwesomeIcon.Copy))
         {
             ImGui.SetClipboardText(code);
         }
-        UiSharedService.AttachToolTip("Copy Code to Clipboard");
+        _uiSharedService.DrawHelpText("Copy Code to Clipboard" + UiSharedService.TooltipSeparator
+            + "Note: The sharing code can be used to let other users to import this character data.");
 
         string creationTime = dataDto.CreatedDate.ToLocalTime().ToString();
         string updateTime = dataDto.UpdatedDate.ToLocalTime().ToString();
@@ -816,7 +818,7 @@ internal sealed partial class CharaDataHubUi
                     _uiSharedService.DrawHelpText("Users added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
                         + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                    using (var lb = ImRaii.ListBox("Allowed Individuals", new(200 * ImGuiHelpers.GlobalScale, 200 * ImGuiHelpers.GlobalScale)))
+                    using (var lb = ImRaii.ListBox("Allowed Individuals"))
                     {
                         foreach (var user in updateDto.UserList)
                         {
@@ -885,7 +887,7 @@ internal sealed partial class CharaDataHubUi
                     _uiSharedService.DrawHelpText("Users in Syncshells added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
                         + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                    using (var lb = ImRaii.ListBox("Allowed Syncshells", new(200 * ImGuiHelpers.GlobalScale, 200 * ImGuiHelpers.GlobalScale)))
+                    using (var lb = ImRaii.ListBox("Allowed Syncshells"))
                     {
                         foreach (var group in updateDto.GroupList)
                         {
@@ -932,7 +934,7 @@ internal sealed partial class CharaDataHubUi
 
             ImGui.Separator();
             ImGuiHelpers.ScaledDummy(5);
-        });
+        }, drawOpen: true);
     }
 
     private void InputComboHybrid<T>(string inputId, string comboId, ref string value, IEnumerable<T> comboEntries,

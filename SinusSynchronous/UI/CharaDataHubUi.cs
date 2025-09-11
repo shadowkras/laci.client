@@ -17,6 +17,7 @@ using SinusSynchronous.SinusConfiguration.Models;
 using SinusSynchronous.UI.Components;
 using SinusSynchronous.Utils;
 using SinusSynchronous.WebAPI;
+using System.Numerics;
 
 namespace SinusSynchronous.UI;
 
@@ -107,7 +108,15 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             _sharedWithYouOwnerFilter = msg.UserData.AliasOrUID;
             UpdateFilteredItems();
         });
-        _serverSelector = new ServerSelectorSmall(index => _selectedServerIndex = index);
+        SizeConstraints = new WindowSizeConstraints()
+        {
+            MinimumSize = new Vector2(600, 400),
+            MaximumSize = new Vector2(1200, 2000),
+        };
+        _serverSelector = new ServerSelectorSmall(index => {
+            _selectedServerIndex = index;
+            _ = _charaDataManager.GetAllData(_selectedServerIndex, _disposalCts.Token);
+        });
     }
 
     private bool _openDataApplicationShared = false;
@@ -184,7 +193,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
 
         var availableWidth = ImGui.GetWindowContentRegionMax().X;
         _serverSelector.Draw(_serverConfigurationManager.GetServerNames(), _apiController.ConnectedServerIndexes, availableWidth);
-        
+
         using var disabled = ImRaii.Disabled(_disableUI);
 
         DisableDisabled(() =>
@@ -212,66 +221,28 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
         });
 
         using var tabs = ImRaii.TabBar("TabsTopLevel");
-        bool smallUi = false;
 
         _isHandlingSelf = _charaDataManager.HandledCharaData.Any(c => c.IsSelf);
         if (_isHandlingSelf) _openMcdOnlineOnNextRun = false;
 
-        using (var gposeTogetherTabItem = ImRaii.TabItem("GPose Together"))
+        using (var gposeTabItem = ImRaii.TabItem("GPose"))
         {
-            if (gposeTogetherTabItem)
+            if (gposeTabItem)
             {
-                smallUi = true;
-
+                DrawGposeControls();
+                ImGui.Separator();
                 DrawGposeTogether();
             }
         }
 
-        using (var applicationTabItem = ImRaii.TabItem("Data Application", _openDataApplicationShared ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
+        using (var nearbyPosesTabItem = ImRaii.TabItem("World Poses"))
         {
-            if (applicationTabItem)
+            if (nearbyPosesTabItem)
             {
-                smallUi = true;
-                using var appTabs = ImRaii.TabBar("TabsApplicationLevel");
+                using var id = ImRaii.PushId("nearbyPoseControls");
+                _charaDataNearbyManager.ComputeNearbyData = true;
 
-                using (ImRaii.Disabled(!_uiSharedService.IsInGpose))
-                {
-                    using (var gposeTabItem = ImRaii.TabItem("GPose Actors"))
-                    {
-                        if (gposeTabItem)
-                        {
-                            using var id = ImRaii.PushId("gposeControls");
-                            DrawGposeControls();
-                        }
-                    }
-                }
-                if (!_uiSharedService.IsInGpose)
-                    UiSharedService.AttachToolTip("Only available in GPose");
-
-                using (var nearbyPosesTabItem = ImRaii.TabItem("Poses Nearby"))
-                {
-                    if (nearbyPosesTabItem)
-                    {
-                        using var id = ImRaii.PushId("nearbyPoseControls");
-                        _charaDataNearbyManager.ComputeNearbyData = true;
-
-                        DrawNearbyPoses();
-                    }
-                    else
-                    {
-                        _charaDataNearbyManager.ComputeNearbyData = false;
-                    }
-                }
-
-                using (var gposeTabItem = ImRaii.TabItem("Apply Data", _openDataApplicationShared ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
-                {
-                    if (gposeTabItem)
-                    {
-                        smallUi |= true;
-                        using var id = ImRaii.PushId("applyData");
-                        DrawDataApplication();
-                    }
-                }
+                DrawWorldPosesNearby();
             }
             else
             {
@@ -281,42 +252,40 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
 
         using (ImRaii.Disabled(_isHandlingSelf))
         {
-            ImGuiTabItemFlags flagsTopLevel = ImGuiTabItemFlags.None;
-            if (_openMcdOnlineOnNextRun)
-            {
-                flagsTopLevel = ImGuiTabItemFlags.SetSelected;
-                _openMcdOnlineOnNextRun = false;
-            }
-
-            using (var creationTabItem = ImRaii.TabItem("Data Creation", flagsTopLevel))
+            using (var creationTabItem = ImRaii.TabItem("Character Data Online", _openMcdOnlineOnNextRun ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
             {
                 if (creationTabItem)
                 {
                     using var creationTabs = ImRaii.TabBar("TabsCreationLevel");
 
-                    ImGuiTabItemFlags flags = ImGuiTabItemFlags.None;
-                    if (_openMcdOnlineOnNextRun)
-                    {
-                        flags = ImGuiTabItemFlags.SetSelected;
-                        _openMcdOnlineOnNextRun = false;
-                    }
-                    using (var mcdOnlineTabItem = ImRaii.TabItem("SCD Online", flags))
+                    using (var mcdOnlineTabItem = ImRaii.TabItem("Data Creation", _openMcdOnlineOnNextRun ? ImGuiTabItemFlags.SetSelected : ImGuiTabItemFlags.None))
                     {
                         if (mcdOnlineTabItem)
                         {
                             using var id = ImRaii.PushId("mcdOnline");
                             DrawMcdOnline();
+                            _openMcdOnlineOnNextRun = false;
                         }
                     }
-
-                    using (var mcdfTabItem = ImRaii.TabItem("MCDF Export"))
+                    using (var gposeTabItem = ImRaii.TabItem("Apply Data"))
                     {
-                        if (mcdfTabItem)
+                        if (gposeTabItem)
                         {
-                            using var id = ImRaii.PushId("mcdfExport");
-                            DrawMcdfExport();
+                            using var id = ImRaii.PushId("applyData");
+                            DrawDataApplication();
                         }
                     }
+                }
+            }
+            using (var creationTabItem = ImRaii.TabItem("MCDF"))
+            {
+                if (creationTabItem)
+                {
+                    DrawMcdfExport();
+
+                    ImGui.Separator();
+
+                    DrawMcdfImport();
                 }
             }
         }
@@ -333,9 +302,6 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                 DrawSettings();
             }
         }
-
-
-        SetWindowSizeConstraints(smallUi);
     }
 
     private void DrawAddOrRemoveFavorite(CharaDataFullDto dto)
@@ -375,59 +341,76 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
     {
         _uiSharedService.BigText("GPose Actors");
         ImGuiHelpers.ScaledDummy(5);
-        using var indent = ImRaii.PushIndent(10f);
 
-        foreach (var actor in _dalamudUtilService.GetGposeCharactersFromObjectTable())
+        if (!_uiSharedService.IsInGpose)
         {
-            if (actor == null) continue;
-            using var actorId = ImRaii.PushId(actor.Name.TextValue);
-            UiSharedService.DrawGrouped(() =>
+            ImGuiHelpers.ScaledDummy(5);
+            UiSharedService.DrawGroupedCenteredColorText("Gpose actors are only available in GPose.", ImGuiColors.DalamudYellow);
+            ImGuiHelpers.ScaledDummy(5);
+        }
+
+        using (ImRaii.Disabled(!_uiSharedService.IsInGpose))
+        {
+            using var indent = ImRaii.PushIndent(10f);
+
+            var gposeTarget = _dalamudUtilService.GetGposeTargetGameObjectAsync().GetAwaiter().GetResult();
+
+            foreach (var actor in _dalamudUtilService.GetGposeCharactersFromObjectTable())
             {
-                if (_uiSharedService.IconButton(FontAwesomeIcon.Crosshairs))
-                {
-                    unsafe
-                    {
-                        _dalamudUtilService.GposeTarget = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)actor.Address;
-                    }
-                }
-                ImGui.SameLine();
-                UiSharedService.AttachToolTip($"Target the GPose Character {CharaName(actor.Name.TextValue)}");
-                ImGui.AlignTextToFramePadding();
-                var pos = ImGui.GetCursorPosX();
-                using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.HealerGreen, actor.Address == (_dalamudUtilService.GetGposeTargetGameObjectAsync().GetAwaiter().GetResult()?.Address ?? nint.Zero)))
-                {
-                    ImGui.TextUnformatted(CharaName(actor.Name.TextValue));
-                }
-                ImGui.SameLine(250);
-                var handled = _charaDataManager.HandledCharaData.FirstOrDefault(c => string.Equals(c.Name, actor.Name.TextValue, StringComparison.Ordinal));
-                using (ImRaii.Disabled(handled == null))
-                {
-                    _uiSharedService.IconText(FontAwesomeIcon.InfoCircle);
-                    var id = string.IsNullOrEmpty(handled?.MetaInfo.Uploader.UID) ? handled?.MetaInfo.Id : handled.MetaInfo.FullId;
-                    UiSharedService.AttachToolTip($"Applied Data: {id ?? "No data applied"}");
+                if (actor == null) continue;
+                var actorName = string.IsNullOrEmpty(actor.Name.TextValue) ? $"Unknown_{actor.Address}" : actor.Name.TextValue;
 
-                    ImGui.SameLine();
-                    // maybe do this better, check with brio for handled charas or sth
-                    using (ImRaii.Disabled(!actor.Name.TextValue.StartsWith("Brio ", StringComparison.Ordinal)))
+                UiSharedService.DrawGrouped(() =>
+                {
+                    using var actorId = ImRaii.PushId($"{actor.Address}_{actorName}");
+
+                    if (_uiSharedService.IconButton(FontAwesomeIcon.Crosshairs))
                     {
-                        if (_uiSharedService.IconButton(FontAwesomeIcon.Trash))
+                        unsafe
                         {
-                            _charaDataManager.RemoveChara(actor.Name.TextValue);
+                            _dalamudUtilService.GposeTarget = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)actor.Address;
                         }
-                        UiSharedService.AttachToolTip($"Remove character {CharaName(actor.Name.TextValue)}");
                     }
                     ImGui.SameLine();
-                    if (_uiSharedService.IconButton(FontAwesomeIcon.Undo))
-                    {
-                        _charaDataManager.RevertChara(handled);
-                    }
-                    UiSharedService.AttachToolTip($"Revert applied data from {CharaName(actor.Name.TextValue)}");
-                    ImGui.SetCursorPosX(pos);
-                    DrawPoseData(handled?.MetaInfo, actor.Name.TextValue, true);
-                }
-            });
+                    UiSharedService.AttachToolTip($"Target the GPose Character {actorName}");
+                    ImGui.AlignTextToFramePadding();
+                    var pos = ImGui.GetCursorPosX();
 
-            ImGuiHelpers.ScaledDummy(2);
+                    using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.HealerGreen, actor.Address == (gposeTarget?.Address ?? nint.Zero)))
+                    {
+                        ImGui.TextUnformatted(CharaName(actor.Name.TextValue));
+                    }
+                    ImGui.SameLine(250);
+                    var handled = _charaDataManager.HandledCharaData.FirstOrDefault(c => string.Equals(c.Name, actor.Name.TextValue, StringComparison.Ordinal));
+                    using (ImRaii.Disabled(handled == null))
+                    {
+                        _uiSharedService.IconText(FontAwesomeIcon.InfoCircle);
+                        var id = string.IsNullOrEmpty(handled?.MetaInfo.Uploader.UID) ? handled?.MetaInfo.Id : handled.MetaInfo.FullId;
+                        UiSharedService.AttachToolTip($"Applied Data: {id ?? "No data applied"}");
+
+                        ImGui.SameLine();
+                        // maybe do this better, check with brio for handled charas or sth
+                        using (ImRaii.Disabled(!actor.Name.TextValue.StartsWith("Brio ", StringComparison.Ordinal)))
+                        {
+                            if (_uiSharedService.IconButton(FontAwesomeIcon.Trash))
+                            {
+                                _charaDataManager.RemoveChara(actor.Name.TextValue);
+                            }
+                            UiSharedService.AttachToolTip($"Remove character {actorName}");
+                        }
+                        ImGui.SameLine();
+                        if (_uiSharedService.IconButton(FontAwesomeIcon.Undo))
+                        {
+                            _charaDataManager.RevertChara(handled);
+                        }
+                        UiSharedService.AttachToolTip($"Revert applied data from {actorName}");
+                        ImGui.SetCursorPosX(pos);
+                        DrawPoseData(handled?.MetaInfo, actor.Name.TextValue, true);
+                    }
+                });
+
+                ImGuiHelpers.ScaledDummy(2);
+            }
         }
     }
 
@@ -447,7 +430,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
         if (!_hasValidGposeTarget)
         {
             ImGuiHelpers.ScaledDummy(3);
-            UiSharedService.DrawGroupedCenteredColorText("Applying data is only available in GPose with a valid selected GPose target.", ImGuiColors.DalamudYellow, 350);
+            UiSharedService.DrawGroupedCenteredColorText("Applying data is only available in GPose with a valid selected GPose target.", ImGuiColors.DalamudYellow, 420);
         }
 
         ImGuiHelpers.ScaledDummy(10);
@@ -611,24 +594,25 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             }
         }
 
-        using (var byCodeTabItem = ImRaii.TabItem("Code"))
+        using (var byCodeTabItem = ImRaii.TabItem("Sharing Code"))
         {
             using var id = ImRaii.PushId("byCodeTab");
             if (byCodeTabItem)
             {
                 using var child = ImRaii.Child("sharedWithYouByCode", new(0, 0), false, ImGuiWindowFlags.AlwaysAutoResize);
-                DrawHelpFoldout("You can apply character data you have a code for in this tab. Provide the code in it's given format \"OwnerUID:DataId\" into the field below and click on " +
-                                "\"Get Info from Code\". This will provide you basic information about the data behind the code. Afterwards select an actor in GPose and press on \"Download and apply to <actor>\"." + Environment.NewLine + Environment.NewLine
-                                + "Description: as set by the owner of the code to give you more or additional information of what this code may contain." + Environment.NewLine
-                                + "Last Update: the date and time the owner of the code has last updated the data." + Environment.NewLine
-                                + "Is Downloadable: whether or not the code is downloadable and applicable. If the code is not downloadable, contact the owner so they can attempt to fix it." + Environment.NewLine + Environment.NewLine
-                                + "To download a code the code requires correct access permissions to be set by the owner. If getting info from the code fails, contact the owner to make sure they set their Access Permissions for the code correctly.");
+                DrawHelpFoldout("You can apply character data you have a sharing code for in this tab. Provide the code in it's given format \"OwnerUID:DataId\" into the field below and click on " +
+                                "\"Get Info from Code\". This will provide you basic information about the data behind the code. " + Environment.NewLine
+                                + " Afterwards select an actor in GPose and press on \"Download and apply to <actor>\"." + Environment.NewLine + Environment.NewLine
+                                + "Description: as set by the owner of the sharing code to give you more or additional information of what this code may contain." + Environment.NewLine
+                                + "Last Update: the date and time the owner of the sharing code has last updated the data." + Environment.NewLine
+                                + "Is Downloadable: whether or not the sharing code is downloadable and applicable. If the code is not downloadable, contact the owner so they can attempt to fix it." + Environment.NewLine + Environment.NewLine
+                                + "To download the character data, the code requires correct access permissions to be set by the owner. If getting info from the sharing code fails, contact the owner to make sure they set their Access Permissions for the code correctly.");
 
                 ImGuiHelpers.ScaledDummy(5);
-                ImGui.InputTextWithHint("##importCode", "Enter Data Code", ref _importCode, 100);
+                ImGui.InputTextWithHint("##importCode", "Enter Character Data Sharing Code", ref _importCode, 100);
                 using (ImRaii.Disabled(string.IsNullOrEmpty(_importCode)))
                 {
-                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowCircleDown, "Get Info from Code"))
+                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowCircleDown, "Get Info from Sharing Code"))
                     {
                         _charaDataManager.DownloadMetaInfo(_selectedServerIndex, _importCode);
                     }
@@ -798,78 +782,6 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                 }
             }
         }
-
-        using (var mcdfTabItem = ImRaii.TabItem("From MCDF"))
-        {
-            using var id = ImRaii.PushId("applyMcdfTab");
-            if (mcdfTabItem)
-            {
-                using var child = ImRaii.Child("applyMcdf", new(0, 0), false, ImGuiWindowFlags.AlwaysAutoResize);
-                DrawHelpFoldout("You can apply character data shared with you using a MCDF file in this tab." + Environment.NewLine + Environment.NewLine
-                                + "Load the MCDF first via the \"Load MCDF\" button which will give you the basic description that the owner has set during export." + Environment.NewLine
-                                + "You can then apply it to any handled GPose actor." + Environment.NewLine + Environment.NewLine
-                                + "MCDF to share with others can be generated using the \"MCDF Export\" tab at the top.");
-
-                ImGuiHelpers.ScaledDummy(5);
-
-                if (_charaDataManager.LoadedMcdfHeader == null || _charaDataManager.LoadedMcdfHeader.IsCompleted)
-                {
-                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.FolderOpen, "Load MCDF"))
-                    {
-                        _fileDialogManager.OpenFileDialog("Pick MCDF file", ".mcdf", (success, paths) =>
-                        {
-                            if (!success) return;
-                            if (paths.FirstOrDefault() is not string path) return;
-
-                            _configService.Current.LastSavedCharaDataLocation = Path.GetDirectoryName(path) ?? string.Empty;
-                            _configService.Save();
-
-                            _charaDataManager.LoadMcdf(path);
-                        }, 1, Directory.Exists(_configService.Current.LastSavedCharaDataLocation) ? _configService.Current.LastSavedCharaDataLocation : null);
-                    }
-                    UiSharedService.AttachToolTip("Load MCDF Metadata into memory");
-                    if ((_charaDataManager.LoadedMcdfHeader?.IsCompleted ?? false))
-                    {
-                        ImGui.TextUnformatted("Loaded file");
-                        ImGui.SameLine(200);
-                        UiSharedService.TextWrapped(_charaDataManager.LoadedMcdfHeader.Result.LoadedFile.FilePath);
-                        ImGui.Text("Description");
-                        ImGui.SameLine(200);
-                        UiSharedService.TextWrapped(_charaDataManager.LoadedMcdfHeader.Result.LoadedFile.CharaFileData.Description);
-
-                        ImGuiHelpers.ScaledDummy(5);
-
-                        using (ImRaii.Disabled(!_hasValidGposeTarget))
-                        {
-                            if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowRight, "Apply"))
-                            {
-                                _ = _charaDataManager.McdfApplyToGposeTarget();
-                            }
-                            UiSharedService.AttachToolTip($"Apply to {_gposeTarget}");
-                            ImGui.SameLine();
-                            using (ImRaii.Disabled(!_charaDataManager.BrioAvailable))
-                            {
-                                if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "Spawn Actor and Apply"))
-                                {
-                                    _charaDataManager.McdfSpawnApplyToGposeTarget();
-                                }
-                            }
-                        }
-                    }
-                    if ((_charaDataManager.LoadedMcdfHeader?.IsFaulted ?? false) || (_charaDataManager.McdfApplicationTask?.IsFaulted ?? false))
-                    {
-                        UiSharedService.ColorTextWrapped("Failure to read MCDF file. MCDF file is possibly corrupt. Re-export the MCDF file and try again.",
-                            ImGuiColors.DalamudRed);
-                        UiSharedService.ColorTextWrapped("Note: if this is your MCDF, try redrawing yourself, wait and re-export the file. " +
-                            "If you received it from someone else have them do the same.", ImGuiColors.DalamudYellow);
-                    }
-                }
-                else
-                {
-                    UiSharedService.ColorTextWrapped("Loading Character...", ImGuiColors.DalamudYellow);
-                }
-            }
-        }
     }
 
     private void DrawMcdfExport()
@@ -910,6 +822,76 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                 " equipped and redraw your character before exporting.", ImGuiColors.DalamudYellow);
 
             ImGui.Unindent();
+        }
+    }
+
+    private void DrawMcdfImport()
+    {
+        _uiSharedService.BigText("Import");
+
+        using var child = ImRaii.Child("applyMcdf", new(0, 0), false, ImGuiWindowFlags.AlwaysAutoResize);
+        DrawHelpFoldout("You can apply character data shared with you using a MCDF file in this tab." + Environment.NewLine + Environment.NewLine
+                        + "Load the MCDF first via the \"Load MCDF\" button which will give you the basic description that the owner has set during export." + Environment.NewLine
+                        + "You can then apply it to any handled GPose actor." + Environment.NewLine + Environment.NewLine
+                        + "MCDF to share with others can be generated using the \"MCDF Export\" tab at the top.");
+
+        ImGuiHelpers.ScaledDummy(5);
+
+        if (_charaDataManager.LoadedMcdfHeader == null || _charaDataManager.LoadedMcdfHeader.IsCompleted)
+        {
+            if (_uiSharedService.IconTextButton(FontAwesomeIcon.FolderOpen, "Load MCDF"))
+            {
+                _fileDialogManager.OpenFileDialog("Pick MCDF file", ".mcdf", (success, paths) =>
+                {
+                    if (!success) return;
+                    if (paths.FirstOrDefault() is not string path) return;
+
+                    _configService.Current.LastSavedCharaDataLocation = Path.GetDirectoryName(path) ?? string.Empty;
+                    _configService.Save();
+
+                    _charaDataManager.LoadMcdf(path);
+                }, 1, Directory.Exists(_configService.Current.LastSavedCharaDataLocation) ? _configService.Current.LastSavedCharaDataLocation : null);
+            }
+            UiSharedService.AttachToolTip("Load MCDF Metadata into memory");
+            if ((_charaDataManager.LoadedMcdfHeader?.IsCompleted ?? false))
+            {
+                ImGui.TextUnformatted("Loaded file");
+                ImGui.SameLine(200);
+                UiSharedService.TextWrapped(_charaDataManager.LoadedMcdfHeader.Result.LoadedFile.FilePath);
+                ImGui.Text("Description");
+                ImGui.SameLine(200);
+                UiSharedService.TextWrapped(_charaDataManager.LoadedMcdfHeader.Result.LoadedFile.CharaFileData.Description);
+
+                ImGuiHelpers.ScaledDummy(5);
+
+                using (ImRaii.Disabled(!_hasValidGposeTarget))
+                {
+                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowRight, "Apply"))
+                    {
+                        _ = _charaDataManager.McdfApplyToGposeTarget();
+                    }
+                    UiSharedService.AttachToolTip($"Apply to {_gposeTarget}");
+                    ImGui.SameLine();
+                    using (ImRaii.Disabled(!_charaDataManager.BrioAvailable))
+                    {
+                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "Spawn Actor and Apply"))
+                        {
+                            _charaDataManager.McdfSpawnApplyToGposeTarget();
+                        }
+                    }
+                }
+            }
+            if ((_charaDataManager.LoadedMcdfHeader?.IsFaulted ?? false) || (_charaDataManager.McdfApplicationTask?.IsFaulted ?? false))
+            {
+                UiSharedService.ColorTextWrapped("Failure to read MCDF file. MCDF file is possibly corrupt. Re-export the MCDF file and try again.",
+                    ImGuiColors.DalamudRed);
+                UiSharedService.ColorTextWrapped("Note: if this is your MCDF, try redrawing yourself, wait and re-export the file. " +
+                    "If you received it from someone else have them do the same.", ImGuiColors.DalamudYellow);
+            }
+        }
+        else
+        {
+            UiSharedService.ColorTextWrapped("Loading Character...", ImGuiColors.DalamudYellow);
         }
     }
 
@@ -966,7 +948,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             {
                 using (ImRaii.Disabled(_isHandlingSelf))
                 {
-                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.Edit, "Open in SCD Online Editor"))
+                    if (_uiSharedService.IconTextButton(FontAwesomeIcon.Edit, "Open in Character Data Online Editor"))
                     {
                         SelectedDtoId = data.Id;
                         _openMcdOnlineOnNextRun = true;

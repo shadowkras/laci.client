@@ -4,6 +4,8 @@ using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using SinusSynchronous.Services.CharaData.Models;
+using static FFXIVClientStructs.FFXIV.Component.GUI.AtkUIColorHolder.Delegates;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace SinusSynchronous.UI;
 
@@ -15,7 +17,7 @@ internal sealed partial class CharaDataHubUi
         if (!_charaDataManager.BrioAvailable)
         {
             ImGuiHelpers.ScaledDummy(5);
-            UiSharedService.DrawGroupedCenteredColorText("BRIO IS MANDATORY FOR GPOSE TOGETHER.", ImGuiColors.DalamudRed);
+            UiSharedService.DrawGroupedCenteredColorText("BRIO IS NEEDED FOR GPOSE TOGETHER.", ImGuiColors.DalamudRed);
             ImGuiHelpers.ScaledDummy(5);
         }
 
@@ -29,7 +31,7 @@ internal sealed partial class CharaDataHubUi
         }
 
         _uiSharedService.BigText("GPose Together");
-        DrawHelpFoldout("GPose together is a way to do multiplayer GPose sessions and collaborations." + UiSharedService.DoubleNewLine
+        DrawHelpFoldout("GPose Together is a way to do multiplayer GPose sessions and collaborations." + UiSharedService.DoubleNewLine
             + "GPose together requires Brio to function. Only Brio is also supported for the actual posing interactions. Attempting to pose using other tools will lead to conflicts and exploding characters." + UiSharedService.DoubleNewLine
             + "To use GPose together you either create or join a GPose Together Lobby. After you and other people have joined, make sure that everyone is on the same map. "
             + "It is not required for you to be on the same server, DC or instance. Users that are on the same map will be drawn as moving purple wisps in the overworld, so you can easily find each other." + UiSharedService.DoubleNewLine
@@ -49,6 +51,8 @@ internal sealed partial class CharaDataHubUi
             ImGuiHelpers.ScaledDummy(5);
             UiSharedService.ScaledNextItemWidth(250);
             ImGui.InputTextWithHint("##lobbyId", "GPose Lobby Id", ref _joinLobbyId, 30);
+            ImGui.SameLine();
+
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowRight, "Join GPose Together Lobby"))
             {
                 _charaDataGposeTogetherManager.JoinGPoseLobby(_selectedServerIndex, _joinLobbyId);
@@ -65,13 +69,19 @@ internal sealed partial class CharaDataHubUi
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted("GPose Lobby");
             ImGui.SameLine();
-            UiSharedService.ColorTextWrapped(_charaDataGposeTogetherManager.CurrentGPoseLobbyId, ImGuiColors.ParsedGreen);
+            UiSharedService.ColorTextWrapped(_charaDataGposeTogetherManager.CurrentGPoseLobbyId, ImGuiColors.ParsedGreen);            
             ImGui.SameLine();
             if (_uiSharedService.IconButton(FontAwesomeIcon.Clipboard))
             {
                 ImGui.SetClipboardText(_charaDataGposeTogetherManager.CurrentGPoseLobbyId);
             }
             UiSharedService.AttachToolTip("Copy Lobby ID to clipboard.");
+            if (_charaDataGposeTogetherManager.CurrentGPoseLobbyServerId.HasValue)
+            {
+                ImGui.TextUnformatted("Current Server: ");
+                ImGui.SameLine();
+                UiSharedService.ColorTextWrapped($"{_apiController.GetServerNameByIndex(_charaDataGposeTogetherManager.CurrentGPoseLobbyServerId.Value)}", ImGuiColors.ParsedGreen);
+            }
             using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
             {
                 if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowLeft, "Leave GPose Lobby"))
@@ -82,18 +92,21 @@ internal sealed partial class CharaDataHubUi
             UiSharedService.AttachToolTip("Leave the current GPose lobby." + UiSharedService.TooltipSeparator + "Hold CTRL and click to leave.");
         }
         UiSharedService.DistanceSeparator();
+
+        if (!_uiSharedService.IsInGpose)
+        {
+            ImGuiHelpers.ScaledDummy(5);
+            UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 320);
+        }
+
         using (ImRaii.Disabled(string.IsNullOrEmpty(_charaDataGposeTogetherManager.CurrentGPoseLobbyId)))
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowUp, "Send Updated Character Data"))
             {
                 _ = _charaDataGposeTogetherManager.PushCharacterDownloadDto(_selectedServerIndex);
-            }
+            }   
             UiSharedService.AttachToolTip("This will send your current appearance, pose and world data to all users in the lobby.");
-            if (!_uiSharedService.IsInGpose)
-            {
-                ImGuiHelpers.ScaledDummy(5);
-                UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 300);
-            }
+            
             UiSharedService.DistanceSeparator();
             ImGui.TextUnformatted("Users In Lobby");
             var gposeCharas = _dalamudUtilService.GetGposeCharactersFromObjectTable();
