@@ -109,6 +109,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         }
     }
 
+    public bool AnyServerConnecting
+    {
+        get
+        {
+            return _sinusClients.Any(client => client.Value._serverState == ServerState.Connecting);
+        }
+    }
+
     public bool AnyServerDisconnecting
     {
         get
