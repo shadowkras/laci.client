@@ -128,7 +128,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     public int[] ConnectedServerIndexes {
         get
         {
-            return [.._sinusClients.Keys];
+            return [.._sinusClients.Where(p=> p.Value._serverState == ServerState.Connected)?.Select(p=> p.Key) ?? []];
         }
     }
 
