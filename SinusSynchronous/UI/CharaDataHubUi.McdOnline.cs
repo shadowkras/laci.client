@@ -144,7 +144,6 @@ internal sealed partial class CharaDataHubUi
     private void DrawEditCharaDataAccessAndSharing(CharaDataExtendedUpdateDto updateDto)
     {
         _uiSharedService.BigText("Access and Sharing");
-        //test
 
         UiSharedService.ScaledNextItemWidth(200);
         var dtoShareType = updateDto.ShareType;
@@ -165,7 +164,7 @@ internal sealed partial class CharaDataHubUi
             + "Shared: People that are allowed through 'Access Restrictions' will have this character data entry displayed in 'Shared with You' (it can also be accessed through the code)" + UiSharedService.TooltipSeparator
             + "Note: Shared with Access Restriction 'Everyone' is the same as shared with Access Restriction 'All Pairs', it will not show up for everyone but just your pairs.");
 
-        ImGuiHelpers.ScaledDummy(10f);
+        ImGuiHelpers.ScaledDummy(3f);
 
         UiSharedService.ScaledNextItemWidth(200);
         var dtoAccessType = updateDto.AccessType;
@@ -189,6 +188,8 @@ internal sealed partial class CharaDataHubUi
             + "Note: To access your character data the person in question requires to have the code. Exceptions for 'Shared' data, see 'Sharing' below." + Environment.NewLine
             + "Note: For 'Direct' and 'All Pairs' the pause state plays a role. Paused people will not be able to access your character data." + Environment.NewLine
             + "Note: Directly specified Individuals or Syncshells in the 'Specific Individuals / Syncshells' list will be able to access your character data regardless of pause or pair state.");
+
+        ImGuiHelpers.ScaledDummy(5f);
 
         DrawSpecific(updateDto);
     }
@@ -797,144 +798,147 @@ internal sealed partial class CharaDataHubUi
     {
         UiSharedService.DrawTree("Access for Specific Individuals / Syncshells", () =>
         {
-            using (ImRaii.PushId("user"))
+            using (ImRaii.Disabled(updateDto.AccessType != AccessTypeDto.Individuals))
             {
-                using (ImRaii.Group())
+                using (ImRaii.PushId("user"))
                 {
-                    InputComboHybrid("##AliasToAdd", "##AliasToAddPicker", ref _specificIndividualAdd, _pairManager.PairsWithGroups.Keys,
-                        static pair => (pair.UserData.UID, pair.UserData.Alias, pair.UserData.AliasOrUID, pair.GetNote()));
-                    ImGui.SameLine();
-                    using (ImRaii.Disabled(string.IsNullOrEmpty(_specificIndividualAdd)
-                        || updateDto.UserList.Any(f => string.Equals(f.UID, _specificIndividualAdd, StringComparison.Ordinal) || string.Equals(f.Alias, _specificIndividualAdd, StringComparison.Ordinal))))
+                    using (ImRaii.Group())
                     {
-                        if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
+                        InputComboHybrid("##AliasToAdd", "##AliasToAddPicker", ref _specificIndividualAdd, _pairManager.PairsWithGroups.Keys,
+                            static pair => (pair.UserData.UID, pair.UserData.Alias, pair.UserData.AliasOrUID, pair.GetNote()));
+                        ImGui.SameLine();
+                        using (ImRaii.Disabled(string.IsNullOrEmpty(_specificIndividualAdd)
+                            || updateDto.UserList.Any(f => string.Equals(f.UID, _specificIndividualAdd, StringComparison.Ordinal) || string.Equals(f.Alias, _specificIndividualAdd, StringComparison.Ordinal))))
                         {
-                            updateDto.AddUserToList(_specificIndividualAdd);
-                            _specificIndividualAdd = string.Empty;
-                        }
-                    }
-                    ImGui.SameLine();
-                    ImGui.TextUnformatted("UID/Vanity UID to Add");
-                    _uiSharedService.DrawHelpText("Users added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
-                        + "Note: Mistyped entries will be automatically removed on updating data to server.");
-
-                    using (var lb = ImRaii.ListBox("Allowed Individuals"))
-                    {
-                        foreach (var user in updateDto.UserList)
-                        {
-                            var userString = string.IsNullOrEmpty(user.Alias) ? user.UID : $"{user.Alias} ({user.UID})";
-                            if (ImGui.Selectable(userString, string.Equals(user.UID, _selectedSpecificUserIndividual, StringComparison.Ordinal)))
+                            if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
                             {
-                                _selectedSpecificUserIndividual = user.UID;
+                                updateDto.AddUserToList(_specificIndividualAdd);
+                                _specificIndividualAdd = string.Empty;
                             }
                         }
-                    }
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted("UID/Vanity UID to Add");
+                        _uiSharedService.DrawHelpText("Users added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
+                            + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                    using (ImRaii.Disabled(string.IsNullOrEmpty(_selectedSpecificUserIndividual)))
-                    {
-                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Remove selected User"))
+                        using (var lb = ImRaii.ListBox("Allowed Individuals"))
                         {
-                            updateDto.RemoveUserFromList(_selectedSpecificUserIndividual);
-                            _selectedSpecificUserIndividual = string.Empty;
-                        }
-                    }
-
-                    using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
-                    {
-                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.ExclamationTriangle, "Apply current Allowed Individuals to all MCDO entries"))
-                        {
-                            foreach (var own in _charaDataManager.OwnCharaData.Values.Where(k => !string.Equals(k.Id, updateDto.Id, StringComparison.Ordinal)))
+                            foreach (var user in updateDto.UserList)
                             {
-                                var otherUpdateDto = _charaDataManager.GetUpdateDto(own.Id);
-                                if (otherUpdateDto == null) continue;
-                                foreach (var user in otherUpdateDto.UserList.Select(k => k.UID).Concat(otherUpdateDto.AllowedUsers ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                var userString = string.IsNullOrEmpty(user.Alias) ? user.UID : $"{user.Alias} ({user.UID})";
+                                if (ImGui.Selectable(userString, string.Equals(user.UID, _selectedSpecificUserIndividual, StringComparison.Ordinal)))
                                 {
-                                    otherUpdateDto.RemoveUserFromList(user);
-                                }
-                                foreach (var user in updateDto.UserList.Select(k => k.UID).Concat(updateDto.AllowedUsers ?? []).Distinct(StringComparer.Ordinal).ToList())
-                                {
-                                    otherUpdateDto.AddUserToList(user);
+                                    _selectedSpecificUserIndividual = user.UID;
                                 }
                             }
                         }
+
+                        using (ImRaii.Disabled(string.IsNullOrEmpty(_selectedSpecificUserIndividual)))
+                        {
+                            if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Remove selected User"))
+                            {
+                                updateDto.RemoveUserFromList(_selectedSpecificUserIndividual);
+                                _selectedSpecificUserIndividual = string.Empty;
+                            }
+                        }
+
+                        using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
+                        {
+                            if (_uiSharedService.IconTextButton(FontAwesomeIcon.ExclamationTriangle, "Apply current Allowed Individuals to all MCDO entries"))
+                            {
+                                foreach (var own in _charaDataManager.OwnCharaData.Values.Where(k => !string.Equals(k.Id, updateDto.Id, StringComparison.Ordinal)))
+                                {
+                                    var otherUpdateDto = _charaDataManager.GetUpdateDto(own.Id);
+                                    if (otherUpdateDto == null) continue;
+                                    foreach (var user in otherUpdateDto.UserList.Select(k => k.UID).Concat(otherUpdateDto.AllowedUsers ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                    {
+                                        otherUpdateDto.RemoveUserFromList(user);
+                                    }
+                                    foreach (var user in updateDto.UserList.Select(k => k.UID).Concat(updateDto.AllowedUsers ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                    {
+                                        otherUpdateDto.AddUserToList(user);
+                                    }
+                                }
+                            }
+                        }
+                        UiSharedService.AttachToolTip("This will apply the current list of allowed specific individuals to ALL of your MCDO entries." + UiSharedService.TooltipSeparator
+                            + "Hold CTRL to enable.");
                     }
-                    UiSharedService.AttachToolTip("This will apply the current list of allowed specific individuals to ALL of your MCDO entries." + UiSharedService.TooltipSeparator
-                        + "Hold CTRL to enable.");
                 }
-            }
-            ImGui.SameLine();
-            ImGuiHelpers.ScaledDummy(20);
-            ImGui.SameLine();
+                ImGui.SameLine();
+                ImGuiHelpers.ScaledDummy(20);
+                ImGui.SameLine();
 
-            using (ImRaii.PushId("group"))
-            {
-                using (ImRaii.Group())
+                using (ImRaii.PushId("group"))
                 {
-                    InputComboHybrid("##GroupAliasToAdd", "##GroupAliasToAddPicker", ref _specificGroupAdd, _pairManager.Groups.Keys,
-                        group => (group.GroupData.GID, group.GroupData.Alias, group.GroupData.AliasOrGID, _serverConfigurationManager.GetNoteForGid(_selectedServerIndex, group.GroupData.GID)));
-                    ImGui.SameLine();
-                    using (ImRaii.Disabled(string.IsNullOrEmpty(_specificGroupAdd)
-                        || updateDto.GroupList.Any(f => string.Equals(f.GID, _specificGroupAdd, StringComparison.Ordinal) || string.Equals(f.Alias, _specificGroupAdd, StringComparison.Ordinal))))
+                    using (ImRaii.Group())
                     {
-                        if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
+                        InputComboHybrid("##GroupAliasToAdd", "##GroupAliasToAddPicker", ref _specificGroupAdd, _pairManager.Groups.Keys,
+                            group => (group.GroupData.GID, group.GroupData.Alias, group.GroupData.AliasOrGID, _serverConfigurationManager.GetNoteForGid(_selectedServerIndex, group.GroupData.GID)));
+                        ImGui.SameLine();
+                        using (ImRaii.Disabled(string.IsNullOrEmpty(_specificGroupAdd)
+                            || updateDto.GroupList.Any(f => string.Equals(f.GID, _specificGroupAdd, StringComparison.Ordinal) || string.Equals(f.Alias, _specificGroupAdd, StringComparison.Ordinal))))
                         {
-                            updateDto.AddGroupToList(_specificGroupAdd);
-                            _specificGroupAdd = string.Empty;
-                        }
-                    }
-                    ImGui.SameLine();
-                    ImGui.TextUnformatted("GID/Vanity GID to Add");
-                    _uiSharedService.DrawHelpText("Users in Syncshells added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
-                        + "Note: Mistyped entries will be automatically removed on updating data to server.");
-
-                    using (var lb = ImRaii.ListBox("Allowed Syncshells"))
-                    {
-                        foreach (var group in updateDto.GroupList)
-                        {
-                            var userString = string.IsNullOrEmpty(group.Alias) ? group.GID : $"{group.Alias} ({group.GID})";
-                            if (ImGui.Selectable(userString, string.Equals(group.GID, _selectedSpecificGroupIndividual, StringComparison.Ordinal)))
+                            if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
                             {
-                                _selectedSpecificGroupIndividual = group.GID;
+                                updateDto.AddGroupToList(_specificGroupAdd);
+                                _specificGroupAdd = string.Empty;
                             }
                         }
-                    }
+                        ImGui.SameLine();
+                        ImGui.TextUnformatted("GID/Vanity GID to Add");
+                        _uiSharedService.DrawHelpText("Users in Syncshells added to this list will be able to access this character data regardless of your pause or pair state with them." + UiSharedService.TooltipSeparator
+                            + "Note: Mistyped entries will be automatically removed on updating data to server.");
 
-                    using (ImRaii.Disabled(string.IsNullOrEmpty(_selectedSpecificGroupIndividual)))
-                    {
-                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Remove selected Syncshell"))
+                        using (var lb = ImRaii.ListBox("Allowed Syncshells"))
                         {
-                            updateDto.RemoveGroupFromList(_selectedSpecificGroupIndividual);
-                            _selectedSpecificGroupIndividual = string.Empty;
-                        }
-                    }
-
-                    using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
-                    {
-                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.ExclamationTriangle, "Apply current Allowed Syncshells to all MCDO entries"))
-                        {
-                            foreach (var own in _charaDataManager.OwnCharaData.Values.Where(k => !string.Equals(k.Id, updateDto.Id, StringComparison.Ordinal)))
+                            foreach (var group in updateDto.GroupList)
                             {
-                                var otherUpdateDto = _charaDataManager.GetUpdateDto(own.Id);
-                                if (otherUpdateDto == null) continue;
-                                foreach (var group in otherUpdateDto.GroupList.Select(k => k.GID).Concat(otherUpdateDto.AllowedGroups ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                var userString = string.IsNullOrEmpty(group.Alias) ? group.GID : $"{group.Alias} ({group.GID})";
+                                if (ImGui.Selectable(userString, string.Equals(group.GID, _selectedSpecificGroupIndividual, StringComparison.Ordinal)))
                                 {
-                                    otherUpdateDto.RemoveGroupFromList(group);
-                                }
-                                foreach (var group in updateDto.GroupList.Select(k => k.GID).Concat(updateDto.AllowedGroups ?? []).Distinct(StringComparer.Ordinal).ToList())
-                                {
-                                    otherUpdateDto.AddGroupToList(group);
+                                    _selectedSpecificGroupIndividual = group.GID;
                                 }
                             }
                         }
+
+                        using (ImRaii.Disabled(string.IsNullOrEmpty(_selectedSpecificGroupIndividual)))
+                        {
+                            if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Remove selected Syncshell"))
+                            {
+                                updateDto.RemoveGroupFromList(_selectedSpecificGroupIndividual);
+                                _selectedSpecificGroupIndividual = string.Empty;
+                            }
+                        }
+
+                        using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
+                        {
+                            if (_uiSharedService.IconTextButton(FontAwesomeIcon.ExclamationTriangle, "Apply current Allowed Syncshells to all MCDO entries"))
+                            {
+                                foreach (var own in _charaDataManager.OwnCharaData.Values.Where(k => !string.Equals(k.Id, updateDto.Id, StringComparison.Ordinal)))
+                                {
+                                    var otherUpdateDto = _charaDataManager.GetUpdateDto(own.Id);
+                                    if (otherUpdateDto == null) continue;
+                                    foreach (var group in otherUpdateDto.GroupList.Select(k => k.GID).Concat(otherUpdateDto.AllowedGroups ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                    {
+                                        otherUpdateDto.RemoveGroupFromList(group);
+                                    }
+                                    foreach (var group in updateDto.GroupList.Select(k => k.GID).Concat(updateDto.AllowedGroups ?? []).Distinct(StringComparer.Ordinal).ToList())
+                                    {
+                                        otherUpdateDto.AddGroupToList(group);
+                                    }
+                                }
+                            }
+                        }
+                        UiSharedService.AttachToolTip("This will apply the current list of allowed specific syncshells to ALL of your MCDO entries." + UiSharedService.TooltipSeparator
+                            + "Hold CTRL to enable.");
                     }
-                    UiSharedService.AttachToolTip("This will apply the current list of allowed specific syncshells to ALL of your MCDO entries." + UiSharedService.TooltipSeparator
-                        + "Hold CTRL to enable.");
                 }
-            }
 
-            ImGui.Separator();
-            ImGuiHelpers.ScaledDummy(5);
-        }, drawOpen: true);
+                ImGui.Separator();
+                ImGuiHelpers.ScaledDummy(5);
+            }
+        }, drawOpen: (updateDto.AccessType == AccessTypeDto.Individuals));
     }
 
     private void InputComboHybrid<T>(string inputId, string comboId, ref string value, IEnumerable<T> comboEntries,
