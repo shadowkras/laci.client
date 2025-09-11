@@ -21,6 +21,11 @@ internal partial class CharaDataHubUi
                         + "You can apply Shared World Poses to yourself or spawn the associated character to pose with them." + Environment.NewLine + Environment.NewLine
                         + "You can adjust the filter and change further settings in the 'Settings & Filter' foldout.");
 
+        if (!_apiController.ConnectedServerIndexes.Any(p => p == _selectedServerIndex))
+        {
+            _selectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
+        }
+
         UiSharedService.DrawTree("Settings & Filters", () =>
         {
             string filterByUser = _charaDataNearbyManager.UserNoteFilter;

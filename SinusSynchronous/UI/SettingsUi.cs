@@ -2065,30 +2065,17 @@ public class SettingsUi : WindowMediatorSubscriberBase
         {
             if (tabBar.Success)
             {
-                CreateTabItem("General", DrawGeneral);
-                CreateTabItem("Performance", DrawPerformance);
-                CreateTabItem("Storage", DrawFileStorageSettings);
-                CreateTabItem("Transfers", DrawCurrentTransfers);
-                CreateTabItem("Service Settings", DrawServerConfiguration);
-                CreateTabItem("Debug", DrawDebug);
+                _uiShared.CreateTabItem("General", DrawGeneral);
+                _uiShared.CreateTabItem("Performance", DrawPerformance);
+                _uiShared.CreateTabItem("Storage", DrawFileStorageSettings);
+                _uiShared.CreateTabItem("Transfers", DrawCurrentTransfers);
+                _uiShared.CreateTabItem("Service Settings", DrawServerConfiguration);
+                _uiShared.CreateTabItem("Debug", DrawDebug);
             }
         }
     }
 
-    private static void CreateTabItem(string name, Action drawAction)
-    {
-        using (var tabItem = ImRaii.TabItem(name))
-        {
-            if (tabItem.Success)
-            {
-                using (var child = ImRaii.Child($"{name.Replace(" ", string.Empty)}Child", new Vector2(0, 0), false))
-                {
-                    if (child.Success) 
-                        drawAction?.Invoke();
-                }
-            }
-        }
-    }
+    
 
     private void UiSharedService_GposeEnd()
     {

@@ -4,14 +4,89 @@ using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility;
 using Dalamud.Interface.Utility.Raii;
 using SinusSynchronous.Services.CharaData.Models;
-using static FFXIVClientStructs.FFXIV.Component.GUI.AtkUIColorHolder.Delegates;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace SinusSynchronous.UI;
 
 internal sealed partial class CharaDataHubUi
 {
     private string _joinLobbyId = string.Empty;
+
+    private void DrawGposeControls()
+    {
+        _uiSharedService.BigText("GPose Actors");
+        ImGuiHelpers.ScaledDummy(5);
+
+        if (!_uiSharedService.IsInGpose)
+        {
+            ImGuiHelpers.ScaledDummy(5);
+            UiSharedService.DrawGroupedCenteredColorText("Gpose actors are only available in GPose.", ImGuiColors.DalamudYellow);
+            ImGuiHelpers.ScaledDummy(5);
+
+            return;
+        }
+
+        using var indent = ImRaii.PushIndent(10f);
+
+        var gposeTarget = _dalamudUtilService.GetGposeTargetGameObjectAsync().GetAwaiter().GetResult();
+
+        foreach (var actor in _dalamudUtilService.GetGposeCharactersFromObjectTable())
+        {
+            if (actor == null) continue;
+            var actorName = string.IsNullOrEmpty(actor.Name.TextValue) ? $"Unknown_{actor.Address}" : actor.Name.TextValue;
+
+            UiSharedService.DrawGrouped(() =>
+            {
+                using var actorId = ImRaii.PushId($"{actor.Address}_{actorName}");
+
+                if (_uiSharedService.IconButton(FontAwesomeIcon.Crosshairs))
+                {
+                    unsafe
+                    {
+                        _dalamudUtilService.GposeTarget = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)actor.Address;
+                    }
+                }
+                ImGui.SameLine();
+                UiSharedService.AttachToolTip($"Target the GPose Character {actorName}");
+                ImGui.AlignTextToFramePadding();
+                var pos = ImGui.GetCursorPosX();
+
+                using (ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.HealerGreen, actor.Address == (gposeTarget?.Address ?? nint.Zero)))
+                {
+                    ImGui.TextUnformatted(CharaName(actor.Name.TextValue));
+                }
+                ImGui.SameLine(250);
+                var handled = _charaDataManager.HandledCharaData.FirstOrDefault(c => string.Equals(c.Name, actor.Name.TextValue, StringComparison.Ordinal));
+                using (ImRaii.Disabled(handled == null))
+                {
+                    _uiSharedService.IconText(FontAwesomeIcon.InfoCircle);
+                    var id = string.IsNullOrEmpty(handled?.MetaInfo.Uploader.UID) ? handled?.MetaInfo.Id : handled.MetaInfo.FullId;
+                    UiSharedService.AttachToolTip($"Applied Data: {id ?? "No data applied"}");
+
+                    ImGui.SameLine();
+                    // maybe do this better, check with brio for handled charas or sth
+                    using (ImRaii.Disabled(!actor.Name.TextValue.StartsWith("Brio ", StringComparison.Ordinal)))
+                    {
+                        if (_uiSharedService.IconButton(FontAwesomeIcon.Trash))
+                        {
+                            _charaDataManager.RemoveChara(actor.Name.TextValue);
+                        }
+                        UiSharedService.AttachToolTip($"Remove character {actorName}");
+                    }
+                    ImGui.SameLine();
+                    if (_uiSharedService.IconButton(FontAwesomeIcon.Undo))
+                    {
+                        _charaDataManager.RevertChara(handled);
+                    }
+                    UiSharedService.AttachToolTip($"Revert applied data from {actorName}");
+                    ImGui.SetCursorPosX(pos);
+                    DrawPoseData(handled?.MetaInfo, actor.Name.TextValue, true);
+                }
+            });
+
+            ImGuiHelpers.ScaledDummy(2);
+        }
+    }
+
     private void DrawGposeTogether()
     {
         if (!_charaDataManager.BrioAvailable)
@@ -21,8 +96,12 @@ internal sealed partial class CharaDataHubUi
             ImGuiHelpers.ScaledDummy(5);
         }
 
-        bool isServerConnected = _uiSharedService.ApiController.IsServerConnected(_selectedServerIndex);
+        if (!_apiController.ConnectedServerIndexes.Any(p => p == _selectedServerIndex))
+        {
+            _selectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
+        }
 
+        bool isServerConnected = _uiSharedService.ApiController.IsServerConnected(_selectedServerIndex);
         if (!isServerConnected)
         {
             ImGuiHelpers.ScaledDummy(5);
@@ -38,7 +117,10 @@ internal sealed partial class CharaDataHubUi
             + "Once you are close to each other you can initiate GPose. You must either assign or spawn characters for each of the lobby users. Their own poses and positions to their character will be automatically applied." + Environment.NewLine
             + "Pose and location data during GPose are updated approximately every 10-20s.");
 
-        using var disabled = ImRaii.Disabled(!_charaDataManager.BrioAvailable || !isServerConnected);
+        if (!_charaDataManager.BrioAvailable || !isServerConnected)
+        {
+            return;
+        }
 
         UiSharedService.DistanceSeparator();
         _uiSharedService.BigText("Lobby Controls");
@@ -91,6 +173,7 @@ internal sealed partial class CharaDataHubUi
             }
             UiSharedService.AttachToolTip("Leave the current GPose lobby." + UiSharedService.TooltipSeparator + "Hold CTRL and click to leave.");
         }
+
         UiSharedService.DistanceSeparator();
 
         if (!_uiSharedService.IsInGpose)
@@ -99,15 +182,20 @@ internal sealed partial class CharaDataHubUi
             UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 320);
             ImGuiHelpers.ScaledDummy(5);
         }
-
-        using (ImRaii.Disabled(string.IsNullOrEmpty(_charaDataGposeTogetherManager.CurrentGPoseLobbyId)))
+        else if(string.IsNullOrEmpty(_charaDataGposeTogetherManager.CurrentGPoseLobbyId))
+        {
+            ImGuiHelpers.ScaledDummy(5);
+            UiSharedService.DrawGroupedCenteredColorText("Create or Join a Gpose Together lobby to assign characters.", ImGuiColors.DalamudYellow, 320);
+            ImGuiHelpers.ScaledDummy(5);
+        }
+        else
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowUp, "Send Updated Character Data"))
             {
                 _ = _charaDataGposeTogetherManager.PushCharacterDownloadDto(_selectedServerIndex);
-            }   
+            }
             UiSharedService.AttachToolTip("This will send your current appearance, pose and world data to all users in the lobby.");
-            
+
             UiSharedService.DistanceSeparator();
             ImGui.TextUnformatted("Users In Lobby");
             var gposeCharas = _dalamudUtilService.GetGposeCharactersFromObjectTable();

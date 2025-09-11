@@ -1144,6 +1144,21 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
             width <= 0 ? null : width);
     }
 
+    public void CreateTabItem(string name, Action drawAction)
+    {
+        using (var tabItem = ImRaii.TabItem(name))
+        {
+            if (tabItem.Success)
+            {
+                using (var child = ImRaii.Child($"{name.Replace(" ", string.Empty)}Child", new Vector2(0, 0), false))
+                {
+                    if (child.Success)
+                        drawAction?.Invoke();
+                }
+            }
+        }
+    }
+
     public IDalamudTextureWrap LoadImage(byte[] imageData)
     {
         return _textureProvider.CreateFromImageAsync(imageData).Result;
