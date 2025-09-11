@@ -215,7 +215,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         using (ImRaii.PushId("serverstatus")) DrawServerStatus();
         ImGui.Separator();
         using (ImRaii.PushId("header")) DrawUIDHeader();
-        // ImGui.Separator();
+        // ImGui.Separator(); //UID header is commented out for now
         if (_playerPerformanceConfigService.Current.ShowPlayerPerformanceInMainUi)
         {
             using (ImRaii.PushId("modload")) DrawModLoad();
@@ -314,43 +314,48 @@ public class CompactUi : WindowMediatorSubscriberBase
     }
     private void DrawServerStatus()
     {
-        var buttonSize = _uiSharedService.GetIconButtonSize(FontAwesomeIcon.Link);
-        var userCount = _apiController.OnlineUsers.ToString(CultureInfo.InvariantCulture);
-        var userSize = ImGui.CalcTextSize(userCount);
-        var textSize = ImGui.CalcTextSize("Users Online");
-
-        if (!_serverConfigService.Current.ShowServerPickerInMainMenu)
+        using (_uiSharedService.UidFont.Push())
         {
-            var connectedServers = _apiController.ConnectedServerIndexes
-                .Select(server => _serverConfigManager.GetServerByIndex(server))
-                .Select(server => server.ServerName);
-            var serverNames = String.Join(", ", connectedServers);
-            ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() / 2 - ImGui.CalcTextSize(serverNames).X / 2);
-            ImGui.AlignTextToFramePadding();
-            ImGui.TextWrapped(serverNames);
+            var onlineText = _apiController.AnyServerConnected ? "Online" : "Offline";
+            var origTextSize = ImGui.CalcTextSize(onlineText);
+            ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X) / 2 - (origTextSize.X / 2));
+            ImGui.TextColored(_apiController.AnyServerConnected ? ImGuiColors.ParsedGreen : ImGuiColors.DalamudRed, onlineText);            
         }
+
+        DrawServerStatusTooltipAndToggle();
 
         if (_apiController.AnyServerConnected)
         {
+            var userCount = _apiController.OnlineUsers.ToString(CultureInfo.InvariantCulture);
+            var userSize = ImGui.CalcTextSize(userCount);
+            var textSize = ImGui.CalcTextSize("Users Online");
+
             ImGui.SetCursorPosX((ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth()) / 2 - (userSize.X + textSize.X) / 2 - ImGui.GetStyle().ItemSpacing.X / 2);
             ImGui.AlignTextToFramePadding();
             ImGui.TextColored(ImGuiColors.ParsedGreen, userCount);
+            DrawServerStatusTooltipAndToggle();
+
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted("Users Online");
+            DrawServerStatusTooltipAndToggle();
         }
         else
         {
             ImGui.SetCursorPosX(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() / 2 - ImGui.CalcTextSize("Not connected to any server").X / 2);
             ImGui.AlignTextToFramePadding();
             ImGui.TextColored(ImGuiColors.DalamudRed, "Not connected to any server");
+            DrawServerStatusTooltipAndToggle();
         }
-        ImGui.SameLine(ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth() - buttonSize.X);
-        if (_uiSharedService.IconButton(FontAwesomeIcon.Link))
+    }
+
+    private void DrawServerStatusTooltipAndToggle()
+    {
+        if (ImGui.IsItemClicked())
         {
-            _showMultiServerSelect = !_showMultiServerSelect;
+            ToggleMultiServerSelect();
         }
-        UiSharedService.AttachToolTip("Manage Laci service connections");
+        UiSharedService.AttachToolTip("Manage service connections");
     }
 
     private void ToggleMultiServerSelect()
@@ -379,8 +384,8 @@ public class CompactUi : WindowMediatorSubscriberBase
     {
         if (ImGui.BeginTable("MultiServerInterface", 5, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
         {
-            ImGui.TableSetupColumn($"Server Name", ImGuiTableColumnFlags.None, 4);
-            ImGui.TableSetupColumn($"User ID", ImGuiTableColumnFlags.None, 2);
+            ImGui.TableSetupColumn($" Server Name", ImGuiTableColumnFlags.None, 4);
+            ImGui.TableSetupColumn($"My User ID", ImGuiTableColumnFlags.None, 2);
             ImGui.TableSetupColumn($"Users", ImGuiTableColumnFlags.None, 1);
             ImGui.TableSetupColumn($"Visible", ImGuiTableColumnFlags.None, 1);
             ImGui.TableSetupColumn($"Connection", ImGuiTableColumnFlags.None, 1);
