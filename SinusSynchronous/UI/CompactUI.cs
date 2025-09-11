@@ -321,7 +321,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
         else
         {
-            using (ImRaii.PushId("singleserveruid")) DrawUIDHeader(_secretKeyIdx == -1 ? 0 : _secretKeyIdx);
+            using (ImRaii.PushId("singleserveruid")) DrawUIDHeader(_apiController.ConnectedServerIndexes.FirstOrDefault());
             ImGui.Separator();
         }
 
