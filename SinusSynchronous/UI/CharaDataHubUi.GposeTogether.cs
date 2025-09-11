@@ -92,7 +92,7 @@ internal sealed partial class CharaDataHubUi
             if (!_uiSharedService.IsInGpose)
             {
                 ImGuiHelpers.ScaledDummy(5);
-                UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only avail   able in GPose.", ImGuiColors.DalamudYellow, 300);
+                UiSharedService.DrawGroupedCenteredColorText("Assigning users to characters is only available in GPose.", ImGuiColors.DalamudYellow, 300);
             }
             UiSharedService.DistanceSeparator();
             ImGui.TextUnformatted("Users In Lobby");
