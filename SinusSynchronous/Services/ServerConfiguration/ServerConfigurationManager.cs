@@ -44,6 +44,7 @@ public class ServerConfigurationManager
 
     public string CurrentApiUrl => CurrentServer.ServerUri;
     public ServerStorage CurrentServer => _serverConfigService.Current.ServerStorage[CurrentServerIndex];
+    public bool AnyServerConfigured => _serverTagConfig.Current.ServerTagStorage.Count > 0;
     public bool SendCensusData
     {
         get
