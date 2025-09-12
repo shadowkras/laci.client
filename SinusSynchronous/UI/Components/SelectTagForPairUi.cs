@@ -59,7 +59,7 @@ public class SelectTagForPairUi
 
         if (ImGui.BeginPopup(popupName))
         {
-            var tags = _tagHandler.GetAllTagsSorted();
+            var tags = _tagHandler.GetAllTagsForServerSorted(_pair.ServerIndex);
             var childHeight = tags.Count != 0 ? tags.Count * 25 : 1;
             var childSize = new Vector2(0, childHeight > 100 ? 100 : childHeight) * ImGuiHelpers.GlobalScale;
 
@@ -77,13 +77,13 @@ public class SelectTagForPairUi
             ImGui.TextUnformatted($"Create a new group for {name}.");
             if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
             {
-                HandleAddTag();
+                HandleAddTag(_pair);
             }
             ImGui.SameLine();
             ImGui.InputTextWithHint("##category_name", "New Group", ref _tagNameToAdd, 40);
             if (ImGui.IsKeyDown(ImGuiKey.Enter))
             {
-                HandleAddTag();
+                HandleAddTag(_pair);
             }
             ImGui.EndPopup();
         }
@@ -101,30 +101,27 @@ public class SelectTagForPairUi
 
     private void DrawGroupName(Pair pair, string name)
     {
-        var hasTagBefore = _tagHandler.HasTag(pair.UserData.UID, name);
+        var hasTagBefore = _tagHandler.HasTag(pair.ServerIndex, pair.UserData.UID, name);
         var hasTag = hasTagBefore;
         if (ImGui.Checkbox(name, ref hasTag))
         {
             if (hasTag)
             {
-                _tagHandler.AddTagToPairedUid(pair.UserData.UID, name);
+                _tagHandler.AddTagToPairedUid(pair.ServerIndex, pair.UserData.UID, name);
             }
             else
             {
-                _tagHandler.RemoveTagFromPairedUid(pair.UserData.UID, name);
+                _tagHandler.RemoveTagFromPairedUid(pair.ServerIndex, pair.UserData.UID, name);
             }
         }
     }
 
-    private void HandleAddTag()
+    private void HandleAddTag(Pair pair)
     {
         if (!_tagNameToAdd.IsNullOrWhitespace() && _tagNameToAdd is not (TagHandler.CustomOfflineTag or TagHandler.CustomOnlineTag or TagHandler.CustomVisibleTag))
         {
-            _tagHandler.AddTag(_tagNameToAdd);
-            if (_pair != null)
-            {
-                _tagHandler.AddTagToPairedUid(_pair.UserData.UID, _tagNameToAdd);
-            }
+            _tagHandler.AddTag(pair.ServerIndex, _tagNameToAdd);
+            _tagHandler.AddTagToPairedUid(pair.ServerIndex, pair.UserData.UID, _tagNameToAdd);
             _tagNameToAdd = string.Empty;
         }
         else

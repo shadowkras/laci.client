@@ -98,16 +98,16 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         var tokenSource = new CancellationTokenSource();
         if (!_cancellationTokens.TryAdd(serverIndex, tokenSource))
         {
-            Logger.LogError("[{serverIndex} Failed to add cancellation token, token already present.", serverIndex);
+            Logger.LogError("[{ServerIndex} Failed to add cancellation token, token already present.", serverIndex);
         }
         var uploadToken = tokenSource.Token;
-        Logger.LogDebug("Sending Character data {hash} to service {url}", data.DataHash.Value, _serverManager.CurrentApiUrl);
+        Logger.LogDebug("Sending Character data {Hash} to service {Url}", data.DataHash.Value, _serverManager.GetServerByIndex(serverIndex).ServerUri);
 
         HashSet<string> unverifiedUploads = GetUnverifiedFiles(data);
         if (unverifiedUploads.Any())
         {
             await UploadUnverifiedFiles(serverIndex, unverifiedUploads, visiblePlayers, uploadToken).ConfigureAwait(false);
-            Logger.LogInformation("Upload complete for {hash}", data.DataHash.Value);
+            Logger.LogInformation("Upload complete for {Hash}", data.DataHash.Value);
         }
 
         foreach (var kvp in data.FileReplacements)

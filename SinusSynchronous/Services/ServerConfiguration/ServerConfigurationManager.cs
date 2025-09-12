@@ -102,15 +102,9 @@ public class ServerConfigurationManager
         }
     }
 
-    public (string OAuthToken, string UID)? GetOAuth2(out bool hasMulti, int serverIdx = -1)
+    public (string OAuthToken, string UID)? GetOAuth2(out bool hasMulti, int serverIdx)
     {
-        ServerStorage? currentServer;
-        currentServer = serverIdx == -1 ? CurrentServer : GetServerByIndex(serverIdx);
-        if (currentServer == null)
-        {
-            currentServer = new();
-            Save();
-        }
+        ServerStorage currentServer = GetServerByIndex(serverIdx);
         hasMulti = false;
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
@@ -213,6 +207,11 @@ public class ServerConfigurationManager
         return _serverConfigService.Current.ServerStorage.Select(v => v.ServerUri).ToArray();
     }
 
+    public string GetServerNameByIndex(int index)
+    {
+        return GetServerByIndex(index).ServerName;
+    }
+    
     public ServerStorage GetServerByIndex(int idx)
     {
         try
@@ -310,9 +309,21 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void AddOpenPairTag(string tag)
+    internal void AddOpenPairTag(int serverIndex, string tag)
     {
-        CurrentServerTagStorage().OpenPairTags.Add(tag);
+        GetTagStorageForIndex(serverIndex).OpenPairTags.Add(tag);
+        _serverTagConfig.Save();
+    }
+    
+    internal void AddGlobalOpenPairTag(string tag)
+    {
+        _serverTagConfig.Current.GlobalTagStorage.OpenPairTags.Add(tag);
+        _serverTagConfig.Save();
+    }
+    
+    internal void RemoveOpenGlobalPairTag(string tag)
+    {
+        _serverTagConfig.Current.GlobalTagStorage.OpenPairTags.Remove(tag);
         _serverTagConfig.Save();
     }
 
@@ -322,36 +333,41 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void AddTag(string tag)
+    internal void AddTag(int serverIndex, string tag)
     {
-        CurrentServerTagStorage().ServerAvailablePairTags.Add(tag);
+        GetTagStorageForIndex(serverIndex).ServerAvailablePairTags.Add(tag);
         _serverTagConfig.Save();
         _sinusMediator.Publish(new RefreshUiMessage());
     }
 
-    internal void AddTagForUid(string uid, string tagName)
+    internal void AddTagForUid(int serverIndex, string uid, string tagName)
     {
-        if (CurrentServerTagStorage().UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             tags.Add(tagName);
             _sinusMediator.Publish(new RefreshUiMessage());
         }
         else
         {
-            CurrentServerTagStorage().UidServerPairedUserTags[uid] = [tagName];
+            GetTagStorageForIndex(serverIndex).UidServerPairedUserTags[uid] = [tagName];
         }
 
         _serverTagConfig.Save();
     }
 
-    internal bool ContainsOpenPairTag(string tag)
+    internal bool ContainsOpenPairTag(int serverIndex, string tag)
     {
-        return CurrentServerTagStorage().OpenPairTags.Contains(tag);
+        return GetTagStorageForIndex(serverIndex).OpenPairTags.Contains(tag);
+    }
+    
+    internal bool ContainsGlobalOpenPairTag(string tag)
+    {
+        return _serverTagConfig.Current.GlobalTagStorage.OpenPairTags.Contains(tag);
     }
 
-    internal bool ContainsTag(string uid, string tag)
+    internal bool ContainsTag(int serverIndex, string uid, string tag)
     {
-        if (CurrentServerTagStorage().UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             return tags.Contains(tag, StringComparer.Ordinal);
         }
@@ -392,24 +408,24 @@ public class ServerConfigurationManager
         return null;
     }
 
-    internal HashSet<string> GetServerAvailablePairTags()
+    internal HashSet<string> GetServerAvailablePairTags(int serverIndex)
     {
-        return CurrentServerTagStorage().ServerAvailablePairTags;
+        return GetTagStorageForIndex(serverIndex).ServerAvailablePairTags;
     }
 
-    internal Dictionary<string, List<string>> GetUidServerPairedUserTags()
+    internal Dictionary<string, List<string>> GetUidServerPairedUserTags(int serverIndex)
     {
-        return CurrentServerTagStorage().UidServerPairedUserTags;
+        return GetTagStorageForIndex(serverIndex).UidServerPairedUserTags;
     }
 
-    internal HashSet<string> GetUidsForTag(string tag)
+    internal HashSet<string> GetUidsForTag(int serverIndex, string tag)
     {
-        return CurrentServerTagStorage().UidServerPairedUserTags.Where(p => p.Value.Contains(tag, StringComparer.Ordinal)).Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+        return GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.Where(p => p.Value.Contains(tag, StringComparer.Ordinal)).Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
     }
 
-    internal bool HasTags(string uid)
+    internal bool HasTags(int serverIndex, string uid)
     {
-        if (CurrentServerTagStorage().UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             return tags.Any();
         }
@@ -424,26 +440,26 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void RemoveOpenPairTag(string tag)
+    internal void RemoveOpenPairTag(int serverIndex, string tag)
     {
-        CurrentServerTagStorage().OpenPairTags.Remove(tag);
+        GetTagStorageForIndex(serverIndex).OpenPairTags.Remove(tag);
         _serverTagConfig.Save();
     }
 
-    internal void RemoveTag(string tag)
+    internal void RemoveTag(int serverIndex, string tag)
     {
-        CurrentServerTagStorage().ServerAvailablePairTags.Remove(tag);
-        foreach (var uid in GetUidsForTag(tag))
+        GetTagStorageForIndex(serverIndex).ServerAvailablePairTags.Remove(tag);
+        foreach (var uid in GetUidsForTag(serverIndex, tag))
         {
-            RemoveTagForUid(uid, tag, save: false);
+            RemoveTagForUid(serverIndex, uid, tag, save: false);
         }
         _serverTagConfig.Save();
         _sinusMediator.Publish(new RefreshUiMessage());
     }
 
-    internal void RemoveTagForUid(string uid, string tagName, bool save = true)
+    internal void RemoveTagForUid(int serverIndex, string uid, string tagName, bool save = true)
     {
-        if (CurrentServerTagStorage().UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             tags.Remove(tagName);
 
@@ -452,17 +468,6 @@ public class ServerConfigurationManager
                 _serverTagConfig.Save();
                 _sinusMediator.Publish(new RefreshUiMessage());
             }
-        }
-    }
-
-    internal void RenameTag(string oldName, string newName)
-    {
-        CurrentServerTagStorage().ServerAvailablePairTags.Remove(oldName);
-        CurrentServerTagStorage().ServerAvailablePairTags.Add(newName);
-        foreach (var existingTags in CurrentServerTagStorage().UidServerPairedUserTags.Select(k => k.Value))
-        {
-            if (existingTags.Remove(oldName))
-                existingTags.Add(newName);
         }
     }
 
@@ -505,10 +510,17 @@ public class ServerConfigurationManager
         return _notesConfig.Current.ServerNotes[serverUri];
     }
 
-    private ServerTagStorage CurrentServerTagStorage()
+    // private ServerTagStorage CurrentServerTagStorage()
+    // {
+    //     TryCreateCurrentServerTagStorage(CurrentApiUrl);
+    //     return _serverTagConfig.Current.ServerTagStorage[CurrentApiUrl];
+    // }
+    
+    private ServerTagStorage GetTagStorageForIndex(int serverIndex)
     {
-        TryCreateCurrentServerTagStorage();
-        return _serverTagConfig.Current.ServerTagStorage[CurrentApiUrl];
+        var serverUri = GetServerByIndex(serverIndex).ServerUri;
+        TryCreateCurrentServerTagStorage(serverUri);
+        return _serverTagConfig.Current.ServerTagStorage[serverUri];
     }
 
     private void EnsureMainExists()
@@ -528,11 +540,11 @@ public class ServerConfigurationManager
         }
     }
 
-    private void TryCreateCurrentServerTagStorage()
+    private void TryCreateCurrentServerTagStorage(string apiUrl)
     {
-        if (!_serverTagConfig.Current.ServerTagStorage.ContainsKey(CurrentApiUrl))
+        if (!_serverTagConfig.Current.ServerTagStorage.ContainsKey(apiUrl))
         {
-            _serverTagConfig.Current.ServerTagStorage[CurrentApiUrl] = new();
+            _serverTagConfig.Current.ServerTagStorage[apiUrl] = new();
         }
     }
 

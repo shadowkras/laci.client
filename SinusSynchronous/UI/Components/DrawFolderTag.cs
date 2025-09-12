@@ -1,8 +1,9 @@
 ﻿using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
-using Dalamud.Interface.Utility.Raii;
 using LaciSynchroni.Common.Data.Extensions;
 using SinusSynchronous.PlayerData.Pairs;
+using SinusSynchronous.Services.ServerConfiguration;
+using SinusSynchronous.SinusConfiguration.Models;
 using SinusSynchronous.UI.Handlers;
 using SinusSynchronous.WebAPI;
 using System.Collections.Immutable;
@@ -12,102 +13,48 @@ namespace SinusSynchronous.UI.Components;
 public class DrawFolderTag : DrawFolderBase
 {
     private readonly ApiController _apiController;
+    private readonly ServerConfigurationManager _serverConfigManager;
+    private readonly TagHandler _tagHandler;
     private readonly SelectPairForTagUi _selectPairForTagUi;
+    private readonly TagWithServerIndex _tag;
 
-    public DrawFolderTag(string id, IImmutableList<DrawUserPair> drawPairs, IImmutableList<Pair> allPairs,
-        TagHandler tagHandler, ApiController apiController, SelectPairForTagUi selectPairForTagUi, UiSharedService uiSharedService)
-        : base(id, drawPairs, allPairs, tagHandler, uiSharedService)
+    public DrawFolderTag(TagWithServerIndex tag, IImmutableList<DrawUserPair> drawPairs, IImmutableList<Pair> allPairs,
+        TagHandler tagHandler, ApiController apiController, SelectPairForTagUi selectPairForTagUi, UiSharedService uiSharedService, ServerConfigurationManager serverConfigManager)
+        : base(drawPairs, allPairs, uiSharedService)
     {
         _apiController = apiController;
         _selectPairForTagUi = selectPairForTagUi;
+        _serverConfigManager = serverConfigManager;
+        _tagHandler = tagHandler;
+        _tag = tag;
     }
 
-    protected override bool RenderIfEmpty => _id switch
-    {
-        TagHandler.CustomUnpairedTag => false,
-        TagHandler.CustomOnlineTag => false,
-        TagHandler.CustomOfflineTag => false,
-        TagHandler.CustomVisibleTag => false,
-        TagHandler.CustomAllTag => true,
-        TagHandler.CustomOfflineSyncshellTag => false,
-        _ => true,
-    };
-
-    protected override bool RenderMenu => _id switch
-    {
-        TagHandler.CustomUnpairedTag => false,
-        TagHandler.CustomOnlineTag => false,
-        TagHandler.CustomOfflineTag => false,
-        TagHandler.CustomVisibleTag => false,
-        TagHandler.CustomAllTag => false,
-        TagHandler.CustomOfflineSyncshellTag => false,
-        _ => true,
-    };
-
-    private bool RenderPause => _id switch
-    {
-        TagHandler.CustomUnpairedTag => false,
-        TagHandler.CustomOnlineTag => false,
-        TagHandler.CustomOfflineTag => false,
-        TagHandler.CustomVisibleTag => false,
-        TagHandler.CustomAllTag => false,
-        TagHandler.CustomOfflineSyncshellTag => false,
-        _ => true,
-    } && _allPairs.Any();
-
-    private bool RenderCount => _id switch
-    {
-        TagHandler.CustomUnpairedTag => false,
-        TagHandler.CustomOnlineTag => false,
-        TagHandler.CustomOfflineTag => false,
-        TagHandler.CustomVisibleTag => false,
-        TagHandler.CustomAllTag => false,
-        TagHandler.CustomOfflineSyncshellTag => false,
-        _ => true
-    };
+    protected override bool RenderIfEmpty => true;
+    protected override bool RenderMenu => true;
+    protected override bool IsOpen => _tagHandler.IsTagOpen(_tag.ServerIndex, _tag.Tag);
+    protected override string ComponentId => $"{_tag.ServerIndex}-{_tag.Tag}";
+    
 
     protected override float DrawIcon()
     {
-        var icon = _id switch
-        {
-            TagHandler.CustomUnpairedTag => FontAwesomeIcon.ArrowsLeftRight,
-            TagHandler.CustomOnlineTag => FontAwesomeIcon.Link,
-            TagHandler.CustomOfflineTag => FontAwesomeIcon.Unlink,
-            TagHandler.CustomOfflineSyncshellTag => FontAwesomeIcon.Unlink,
-            TagHandler.CustomVisibleTag => FontAwesomeIcon.Eye,
-            TagHandler.CustomAllTag => FontAwesomeIcon.User,
-            _ => FontAwesomeIcon.Folder
-        };
-
         ImGui.AlignTextToFramePadding();
-        _uiSharedService.IconText(icon);
-
-        if (RenderCount)
-        {
-            //using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, ImGui.GetStyle().ItemSpacing with { X = ImGui.GetStyle().ItemSpacing.X / 2f }))
-            //{
-            //    ImGui.SameLine();
-            //    ImGui.AlignTextToFramePadding();
-
-            //    ImGui.TextUnformatted("[" + OnlinePairs.ToString() + "]");
-            //}
-            UiSharedService.AttachToolTip(OnlinePairs + " online" + Environment.NewLine + TotalPairs + " total");
-        }
+        _uiSharedService.IconText(FontAwesomeIcon.Folder);
+        AddTooltip();
         ImGui.SameLine();
         return ImGui.GetCursorPosX();
     }
-
+    
     protected override void DrawMenu(float menuWidth)
     {
         ImGui.TextUnformatted("Group Menu");
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Users, "Select Pairs", menuWidth, true))
         {
-            _selectPairForTagUi.Open(_id);
+            _selectPairForTagUi.Open(_tag.ServerIndex, _tag.Tag);
         }
         UiSharedService.AttachToolTip("Select Individual Pairs for this Pair Group");
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Delete Pair Group", menuWidth, true) && UiSharedService.CtrlPressed())
         {
-            _tagHandler.RemoveTag(_id);
+            _tagHandler.RemoveTag(_tag.ServerIndex, _tag.Tag);
         }
         UiSharedService.AttachToolTip("Hold CTRL to remove this Group permanently." + Environment.NewLine +
             "Note: this will not unpair with users in this Group.");
@@ -116,26 +63,15 @@ public class DrawFolderTag : DrawFolderBase
     protected override void DrawName(float width)
     {
         ImGui.AlignTextToFramePadding();
-
-        string name = _id switch
-        {
-            TagHandler.CustomUnpairedTag => "One-sided Individual Pairs",
-            TagHandler.CustomOnlineTag => "Online / Paused by you",
-            TagHandler.CustomOfflineTag => "Offline / Paused by other",
-            TagHandler.CustomOfflineSyncshellTag => "Offline Syncshell Users",
-            TagHandler.CustomVisibleTag => "Visible",
-            TagHandler.CustomAllTag => "Users",
-            _ => _id
-        };
-
-        ImGui.TextUnformatted(name);
+        ImGui.TextUnformatted(_tag.Tag);
+        AddTooltip();
     }
 
     protected override float DrawRightSide(float currentRightSideX)
     {
-        if (!RenderPause) return currentRightSideX;
+        if (!_allPairs.Any()) return currentRightSideX;
 
-        var allArePaused = _allPairs.All(pair => pair.UserPair!.OwnPermissions.IsPaused());
+        var allArePaused = _allPairs.All(pair => pair.UserPair.OwnPermissions.IsPaused());
         var pauseButton = allArePaused ? FontAwesomeIcon.Play : FontAwesomeIcon.Pause;
         var pauseButtonX = _uiSharedService.GetIconButtonSize(pauseButton).X;
 
@@ -152,16 +88,22 @@ public class DrawFolderTag : DrawFolderBase
                 PauseRemainingPairs(_allPairs);
             }
         }
-        if (allArePaused)
-        {
-            UiSharedService.AttachToolTip($"Resume pairing with all pairs in {_id}");
-        }
-        else
-        {
-            UiSharedService.AttachToolTip($"Pause pairing with all pairs in {_id}");
-        }
 
+        var action = allArePaused ? "Resume" : "Pause";
+        UiSharedService.AttachToolTip($"{action} pairing with all pairs in {_tag}");
         return currentRightSideX;
+    }
+
+    protected override void ToggleOpen()
+    {
+        _tagHandler.ToggleTagOpen(_tag.ServerIndex, _tag.Tag);
+    }
+
+    private void AddTooltip()
+    {
+        var serverName = _serverConfigManager.GetServerByIndex(_tag.ServerIndex).ServerName;
+        var serverText = $"For server {serverName}";
+        UiSharedService.AttachToolTip( serverText + Environment.NewLine + OnlinePairs + " online" + Environment.NewLine + TotalPairs + " total");
     }
 
     private void PauseRemainingPairs(IEnumerable<Pair> availablePairs)
