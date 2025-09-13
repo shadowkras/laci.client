@@ -28,7 +28,7 @@ public class TagHandler
         _serverConfigurationManager.AddTagForUid(serverIndex, uid, tagName);
     }
 
-    public IEnumerable<TagWithServerIndex> GetAllTagsSorted()
+    public List<TagWithServerIndex> GetAllTagsSorted()
     {
         return _serverConfigurationManager.GetServerInfo()
             .SelectMany((_, index) =>

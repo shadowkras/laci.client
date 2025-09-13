@@ -60,7 +60,7 @@ public class DrawEntityFactory
         Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
         IImmutableList<Pair> allPairs)
     {
-        return new(tag, filteredPairs.Select(u => CreateDrawPair(tag.AsImgUiId(), u.Key, u.Value, null)).ToImmutableList(),
+        return new(tag, filteredPairs.Select(u => CreateDrawPair(tag.AsImGuiId(), u.Key, u.Value, null)).ToImmutableList(),
             allPairs, _tagHandler, _apiController, _selectPairForTagUi, _uiSharedService, _serverConfigurationManager);
     }
     
