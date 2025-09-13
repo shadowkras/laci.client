@@ -13,9 +13,9 @@ namespace SinusSynchronous.Services;
 
 public sealed class CommandManagerService : IDisposable
 {
-    private static readonly string CommandName = PluginCustomization.CommandName;
-    private static readonly string PluginName = PluginCustomization.PluginName;
-    private static readonly string PluginNameShort = PluginCustomization.PluginNameShort;
+    private const string CommandName = "/laci";
+    private const string PluginName = "Laci Synchroni";
+    private const string PluginNameShort = "Laci";
     private readonly ApiController _apiController;
     private readonly ICommandManager _commandManager;
     private readonly SinusMediator _mediator;
@@ -118,7 +118,7 @@ public sealed class CommandManagerService : IDisposable
                 NotificationType.Error));
         }
 
-        if (_serverConfigurationManager.AnyServerConfigured) return;
+        if (!_serverConfigurationManager.AnyServerConfigured) return;
         if (splitArgs.Length <= 1)
         {
             TriggerToggleAllServers();
@@ -158,7 +158,7 @@ public sealed class CommandManagerService : IDisposable
             }
             else
             {
-                await _apiController.CharaDataCreate(serverIndex).ConfigureAwait(false);
+                await _apiController.CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
             }
         }
     }
