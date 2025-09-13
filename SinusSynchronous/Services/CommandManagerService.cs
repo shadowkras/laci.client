@@ -13,8 +13,9 @@ namespace SinusSynchronous.Services;
 
 public sealed class CommandManagerService : IDisposable
 {
-    private const string _commandName = "/sinus";
-
+    private const string CommandName = "/laci";
+    private const string PluginName = "Laci Synchroni";
+    private const string PluginNameShort = "Laci";
     private readonly ApiController _apiController;
     private readonly ICommandManager _commandManager;
     private readonly SinusMediator _mediator;
@@ -23,7 +24,8 @@ public sealed class CommandManagerService : IDisposable
     private readonly CacheMonitor _cacheMonitor;
     private readonly ServerConfigurationManager _serverConfigurationManager;
 
-    public CommandManagerService(ICommandManager commandManager, PerformanceCollectorService performanceCollectorService,
+    public CommandManagerService(ICommandManager commandManager,
+        PerformanceCollectorService performanceCollectorService,
         ServerConfigurationManager serverConfigurationManager, CacheMonitor periodicFileScanner,
         ApiController apiController, SinusMediator mediator, SinusConfigService sinusConfigService)
     {
@@ -34,21 +36,23 @@ public sealed class CommandManagerService : IDisposable
         _apiController = apiController;
         _mediator = mediator;
         _sinusConfigService = sinusConfigService;
-        _commandManager.AddHandler(_commandName, new CommandInfo(OnCommand)
+        _commandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Opens the Sinus Synchronous UI" + Environment.NewLine + Environment.NewLine +
-                "Additionally possible commands:" + Environment.NewLine +
-                "\t /sinus toggle - Disconnects from Sinus, if connected. Connects to Sinus, if disconnected" + Environment.NewLine +
-                "\t /sinus toggle on|off - Connects or disconnects to Sinus respectively" + Environment.NewLine +
-                "\t /sinus gpose - Opens the Sinus Character Data Hub window" + Environment.NewLine +
-                "\t /sinus analyze - Opens the Sinus Character Data Analysis window" + Environment.NewLine +
-                "\t /sinus settings - Opens the Sinus Settings window"
+            HelpMessage = $"Opens the {PluginName} UI" + Environment.NewLine + Environment.NewLine +
+                          "Additionally possible commands:" + Environment.NewLine +
+                          $"\t {CommandName} toggle - Disconnects from all {PluginNameShort} servers, if connected. Connects to all {PluginNameShort} servers, if disconnected" +
+                          Environment.NewLine +
+                          $"\t {CommandName} toggle on|off - Connects or disconnects all {PluginNameShort} servers respectively" +
+                          Environment.NewLine +
+                          $"\t {CommandName} gpose - Opens the {PluginNameShort} Character Data Hub window" + Environment.NewLine +
+                          $"\t {CommandName} analyze - Opens the {PluginNameShort} Character Data Analysis window" + Environment.NewLine +
+                          $"\t {CommandName} settings - Opens the {PluginNameShort} Settings window"
         });
     }
 
     public void Dispose()
     {
-        _commandManager.RemoveHandler(_commandName);
+        _commandManager.RemoveHandler(CommandName);
     }
 
     private void OnCommand(string command, string args)
@@ -70,26 +74,7 @@ public sealed class CommandManagerService : IDisposable
 
         if (string.Equals(splitArgs[0], "toggle", StringComparison.OrdinalIgnoreCase))
         {
-            if (_apiController.AnyServerDisconnecting)
-            {
-                _mediator.Publish(new NotificationMessage("Sinus disconnecting", "Cannot use /toggle while Sinus Synchronous is still disconnecting",
-                    NotificationType.Error));
-            }
-
-            if (_serverConfigurationManager.CurrentServer == null) return;
-            var fullPause = splitArgs.Length > 1 ? splitArgs[1] switch
-            {
-                "on" => false,
-                "off" => true,
-                _ => !_serverConfigurationManager.CurrentServer.FullPause,
-            } : !_serverConfigurationManager.CurrentServer.FullPause;
-
-            if (fullPause != _serverConfigurationManager.CurrentServer.FullPause)
-            {
-                _serverConfigurationManager.CurrentServer.FullPause = fullPause;
-                _serverConfigurationManager.Save();
-                _ = _apiController.CreateConnectionsAsync(_serverConfigurationManager.CurrentServerIndex);
-            }
+            HandleToggleCommand(splitArgs);
         }
         else if (string.Equals(splitArgs[0], "gpose", StringComparison.OrdinalIgnoreCase))
         {
@@ -121,6 +106,72 @@ public sealed class CommandManagerService : IDisposable
         else if (string.Equals(splitArgs[0], "settings", StringComparison.OrdinalIgnoreCase))
         {
             _mediator.Publish(new UiToggleMessage(typeof(SettingsUi)));
+        }
+    }
+
+    private void HandleToggleCommand(string[] splitArgs)
+    {
+        if (_apiController.AnyServerDisconnecting)
+        {
+            _mediator.Publish(new NotificationMessage($"A server is disconnecting",
+                $"Cannot use {CommandName} toggle while any server is still disconnecting",
+                NotificationType.Error));
+        }
+
+        if (!_serverConfigurationManager.AnyServerConfigured) return;
+        if (splitArgs.Length <= 1)
+        {
+            TriggerToggleAllServers();
+        }
+        else if (splitArgs[1].Equals("on"))
+        {
+            _apiController.AutoConnectClients();
+        }
+        else if (splitArgs[1].Equals("off"))
+        {
+            TriggerDisconnectAll();
+        }
+        else
+        {
+            TriggerToggleAllServers();
+        }
+    }
+    
+    private void TriggerToggleAllServers()
+    {
+        _ = ToggleAllServers();
+    }
+
+    private void TriggerDisconnectAll()
+    {
+        _ = DisconnectAllServers();
+    }
+    
+    private async Task ToggleAllServers()
+    {
+        foreach (int serverIndex in _serverConfigurationManager.ServerIndexes)
+        {
+            var isConnected = _apiController.IsServerConnected(serverIndex);
+            if (isConnected)
+            {
+                await _apiController.PauseConnectionAsync(serverIndex).ConfigureAwait(false);
+            }
+            else
+            {
+                await _apiController.CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task DisconnectAllServers()
+    {
+        foreach (int serverIndex in _serverConfigurationManager.ServerIndexes)
+        {
+            var isConnected = _apiController.IsServerConnected(serverIndex);
+            if (isConnected)
+            {
+                await _apiController.PauseConnectionAsync(serverIndex).ConfigureAwait(false);
+            }
         }
     }
 }

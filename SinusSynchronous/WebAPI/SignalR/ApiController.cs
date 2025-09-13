@@ -204,7 +204,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         return GetOrCreateForServer(serverIndex).CreateConnectionsAsync();
     }
 
-    private void AutoConnectClients()
+    public void AutoConnectClients()
     {
         // Fire and forget the auto connect. if something goes wrong, it'll be displayed in UI
         _ = Task.Run(async () =>
