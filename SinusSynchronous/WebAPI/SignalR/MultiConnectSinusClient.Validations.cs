@@ -52,7 +52,7 @@ public partial class MultiConnectSinusClient
         {
             return true;
         }
-        var oauth2 = _serverConfigurationManager.GetOAuth2(out bool multi);
+        var oauth2 = _serverConfigurationManager.GetOAuth2(out bool multi, ServerIndex);
         if (multi)
         {
             Logger.LogWarning("Multiple secret keys for current character");
@@ -73,7 +73,7 @@ public partial class MultiConnectSinusClient
             return false;
         }
 
-        if (!await _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(ServerIndex, _serverConfigurationManager.CurrentServer).ConfigureAwait(false))
+        if (!await _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(ServerIndex, _serverConfigurationManager.GetServerByIndex(ServerIndex)).ConfigureAwait(false))
         {
             Logger.LogWarning("OAuth2 login token could not be updated");
             ConnectionDto = null;

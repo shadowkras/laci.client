@@ -5,6 +5,7 @@ using SinusSynchronous.Services;
 using SinusSynchronous.Services.Mediator;
 using SinusSynchronous.Services.ServerConfiguration;
 using SinusSynchronous.SinusConfiguration;
+using SinusSynchronous.SinusConfiguration.Models;
 using SinusSynchronous.UI.Components;
 using SinusSynchronous.UI.Handlers;
 using SinusSynchronous.WebAPI;
@@ -49,19 +50,26 @@ public class DrawEntityFactory
         Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
         IImmutableList<Pair> allPairs)
     {
-        var imguiId = groupFullInfoDto.GroupFullInfo.GID + groupFullInfoDto.ServerIndex;
         var pairsToRender = filteredPairs.Select(p => CreateDrawPair(groupFullInfoDto, p)).ToImmutableList();
-        return new DrawFolderGroup(imguiId, groupFullInfoDto.ServerIndex, groupFullInfoDto.GroupFullInfo, _apiController,
+        return new DrawFolderGroup(groupFullInfoDto.ServerIndex, groupFullInfoDto.GroupFullInfo, _apiController,
             pairsToRender,
             allPairs, _tagHandler, _uidDisplayHandler, _mediator, _uiSharedService);
     }
 
-    public DrawFolderTag CreateDrawTagFolder(string tag,
+    public DrawFolderTag CreateDrawTagFolder(TagWithServerIndex tag,
         Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
         IImmutableList<Pair> allPairs)
     {
-        return new(tag, filteredPairs.Select(u => CreateDrawPair(tag, u.Key, u.Value, null)).ToImmutableList(),
-            allPairs, _tagHandler, _apiController, _selectPairForTagUi, _uiSharedService);
+        return new(tag, filteredPairs.Select(u => CreateDrawPair(tag.AsImGuiId(), u.Key, u.Value, null)).ToImmutableList(),
+            allPairs, _tagHandler, _apiController, _selectPairForTagUi, _uiSharedService, _serverConfigurationManager);
+    }
+    
+    public DrawCustomTag CreateDrawTagFolderForCustomTag(string specialTag,
+        Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
+        IImmutableList<Pair> allPairs)
+    {
+        return new(specialTag, filteredPairs.Select(u => CreateDrawPair(specialTag, u.Key, u.Value, null)).ToImmutableList(),
+            allPairs, _tagHandler, _uiSharedService);
     }
     
     public DrawUserPair CreateDrawPair(string id, Pair user, List<GroupFullInfoDto> groups, GroupFullInfoDto? currentGroup)

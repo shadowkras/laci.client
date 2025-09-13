@@ -1,4 +1,5 @@
 ﻿using SinusSynchronous.Services.ServerConfiguration;
+using SinusSynchronous.SinusConfiguration.Models;
 
 namespace SinusSynchronous.UI.Handlers;
 
@@ -17,70 +18,103 @@ public class TagHandler
         _serverConfigurationManager = serverConfigurationManager;
     }
 
-    public void AddTag(string tag)
+    public void AddTag(int serverIndex, string tag)
     {
-        _serverConfigurationManager.AddTag(tag);
+        _serverConfigurationManager.AddTag(serverIndex, tag);
     }
 
-    public void AddTagToPairedUid(string uid, string tagName)
+    public void AddTagToPairedUid(int serverIndex, string uid, string tagName)
     {
-        _serverConfigurationManager.AddTagForUid(uid, tagName);
+        _serverConfigurationManager.AddTagForUid(serverIndex, uid, tagName);
     }
 
-    public List<string> GetAllTagsSorted()
+    public List<TagWithServerIndex> GetAllTagsSorted()
     {
-        return
-        [
-            .. _serverConfigurationManager.GetServerAvailablePairTags()
-                        .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
-,
-        ];
+        return _serverConfigurationManager.GetServerInfo()
+            .SelectMany((_, index) =>
+            {
+                var tags = _serverConfigurationManager.GetServerAvailablePairTags(index);
+                return tags.Select(tag => new TagWithServerIndex(index, tag));
+            })
+            .OrderBy(t => t.Tag, StringComparer.Ordinal)
+            .ToList();
+    }
+    
+    public List<string> GetAllTagsForServerSorted(int serverIndex)
+    {
+        return _serverConfigurationManager.GetServerAvailablePairTags(serverIndex)
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
     }
 
-    public HashSet<string> GetOtherUidsForTag(string tag)
+    public HashSet<string> GetOtherUidsForTag(int serverIndex, string tag)
     {
-        return _serverConfigurationManager.GetUidsForTag(tag);
+        return _serverConfigurationManager.GetUidsForTag(serverIndex, tag);
     }
 
-    public bool HasAnyTag(string uid)
+    public bool HasAnyTag(int serverIndex, string uid)
     {
-        return _serverConfigurationManager.HasTags(uid);
+        return _serverConfigurationManager.HasTags(serverIndex, uid);
     }
 
-    public bool HasTag(string uid, string tagName)
+    public bool HasTag(int serverIndex, string uid, string tagName)
     {
-        return _serverConfigurationManager.ContainsTag(uid, tagName);
+        return _serverConfigurationManager.ContainsTag(serverIndex, uid, tagName);
     }
 
     /// <summary>
     /// Is this tag opened in the paired clients UI?
     /// </summary>
+    /// <param name="serverIndex">server the tag belongs to</param>
     /// <param name="tag">the tag</param>
     /// <returns>open true/false</returns>
-    public bool IsTagOpen(string tag)
+    public bool IsTagOpen(int serverIndex, string tag)
     {
-        return _serverConfigurationManager.ContainsOpenPairTag(tag);
+        return _serverConfigurationManager.ContainsOpenPairTag(serverIndex, tag);
     }
 
-    public void RemoveTag(string tag)
+    /// <summary>
+    /// For tags tag are "global", for example the syncshell grouping folder. These are not actually tags, but internally
+    /// used identifiers for UI elements that can be persistently opened/closed
+    /// </summary>
+    /// <param name="tag"></param>
+    /// <returns></returns>
+    public bool IsGlobalTagOpen(string tag)
     {
-        _serverConfigurationManager.RemoveTag(tag);
+        return _serverConfigurationManager.ContainsGlobalOpenPairTag(tag);
+    }
+    
+    public void RemoveTag(int serverIndex, string tag)
+    {
+        _serverConfigurationManager.RemoveTag(serverIndex, tag);
     }
 
-    public void RemoveTagFromPairedUid(string uid, string tagName)
+    public void RemoveTagFromPairedUid(int serverIndex, string uid, string tagName)
     {
-        _serverConfigurationManager.RemoveTagForUid(uid, tagName);
+        _serverConfigurationManager.RemoveTagForUid(serverIndex, uid, tagName);
     }
 
-    public void SetTagOpen(string tag, bool open)
+    public void ToggleTagOpen(int serverIndex, string tag)
     {
-        if (open)
+        if (IsTagOpen(serverIndex, tag))
         {
-            _serverConfigurationManager.AddOpenPairTag(tag);
+            _serverConfigurationManager.AddOpenPairTag(serverIndex, tag);
         }
         else
         {
-            _serverConfigurationManager.RemoveOpenPairTag(tag);
+            _serverConfigurationManager.RemoveOpenPairTag(serverIndex, tag);
+        }
+    }
+    
+    public void ToggleGlobalTagOpen(string tag)
+    {
+        if (IsGlobalTagOpen(tag))
+        {
+            _serverConfigurationManager.AddGlobalOpenPairTag(tag);
+        }
+        else
+        {
+            _serverConfigurationManager.RemoveOpenGlobalPairTag(tag);
         }
     }
 }

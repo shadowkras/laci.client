@@ -38,13 +38,13 @@ public class DrawGroupedGroupFolder : IDrawFolder
             using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0f, 0f)))
                 ImGui.SameLine();
 
-            var icon = _tagHandler.IsTagOpen(_id) ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight;
+            var icon = _tagHandler.IsGlobalTagOpen(_id) ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight;
             ImGui.AlignTextToFramePadding();
 
             _uiSharedService.IconText(icon);
             if (ImGui.IsItemClicked())
             {
-                _tagHandler.SetTagOpen(_id, !_tagHandler.IsTagOpen(_id));
+                _tagHandler.ToggleGlobalTagOpen(_id);
             }
 
             ImGui.SameLine();
@@ -67,7 +67,7 @@ public class DrawGroupedGroupFolder : IDrawFolder
 
         ImGui.Separator();
 
-        if (_tagHandler.IsTagOpen(_id))
+        if (_tagHandler.IsGlobalTagOpen(_id))
         {
             using var indent = ImRaii.PushIndent(20f);
             foreach (var entry in _groups)

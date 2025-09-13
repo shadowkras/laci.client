@@ -2,7 +2,6 @@
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility;
-using Dalamud.Interface.Utility.Raii;
 using LaciSynchroni.Common.Data.Extensions;
 using LaciSynchroni.Common.Dto.Group;
 using SinusSynchronous.PlayerData.Pairs;
@@ -17,24 +16,27 @@ public class DrawFolderGroup : DrawFolderBase
 {
     private readonly ApiController _apiController;
     private readonly GroupFullInfoDto _groupFullInfoDto;
-    private readonly int _serverIndex;
     private readonly IdDisplayHandler _idDisplayHandler;
     private readonly SinusMediator _sinusMediator;
+    private readonly TagHandler _tagHandler;
+    private readonly int _serverIndex;
 
-    public DrawFolderGroup(string id, int serverIndex, GroupFullInfoDto groupFullInfoDto, ApiController apiController,
+    public DrawFolderGroup(int serverIndex, GroupFullInfoDto groupFullInfoDto, ApiController apiController,
         IImmutableList<DrawUserPair> drawPairs, IImmutableList<Pair> allPairs, TagHandler tagHandler, IdDisplayHandler idDisplayHandler,
         SinusMediator sinusMediator, UiSharedService uiSharedService) :
-        base(id, drawPairs, allPairs, tagHandler, uiSharedService)
+        base(drawPairs, allPairs, uiSharedService)
     {
         _groupFullInfoDto = groupFullInfoDto;
         _apiController = apiController;
         _idDisplayHandler = idDisplayHandler;
         _sinusMediator = sinusMediator;
+        _tagHandler = tagHandler;
         _serverIndex = serverIndex;
     }
 
     protected override bool RenderIfEmpty => true;
     protected override bool RenderMenu => true;
+    protected override string ComponentId => $"{_groupFullInfoDto.GID}-{_serverIndex}";
     private string OwnUid => _apiController.GetUidByServer(_serverIndex);
     private bool IsModerator => IsOwner || _groupFullInfoDto.GroupUserInfo.IsModerator();
     private bool IsOwner => string.Equals(_groupFullInfoDto.OwnerUID, OwnUid, StringComparison.Ordinal);
@@ -174,7 +176,7 @@ public class DrawFolderGroup : DrawFolderBase
 
     protected override void DrawName(float width)
     {
-        _idDisplayHandler.DrawGroupText(_serverIndex, _id, _groupFullInfoDto, ImGui.GetCursorPosX(), () => width);
+        _idDisplayHandler.DrawGroupText(_serverIndex, ComponentId, _groupFullInfoDto, ImGui.GetCursorPosX(), () => width);
     }
 
     protected override float DrawRightSide(float currentRightSideX)
@@ -253,5 +255,11 @@ public class DrawFolderGroup : DrawFolderBase
             _ = _apiController.GroupChangeIndividualPermissionState(_serverIndex, new GroupPairUserPermissionDto(_groupFullInfoDto.Group, new(OwnUid), perm));
         }
         return currentRightSideX;
+    }
+
+    protected override bool IsOpen => _tagHandler.IsTagOpen(_serverIndex, _groupFullInfoDto.GID);
+    protected override void ToggleOpen()
+    {
+        _tagHandler.ToggleTagOpen(_serverIndex, _groupFullInfoDto.GID);
     }
 }
