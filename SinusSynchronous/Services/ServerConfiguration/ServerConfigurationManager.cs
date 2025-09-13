@@ -510,12 +510,6 @@ public class ServerConfigurationManager
         return _notesConfig.Current.ServerNotes[serverUri];
     }
 
-    // private ServerTagStorage CurrentServerTagStorage()
-    // {
-    //     TryCreateCurrentServerTagStorage(CurrentApiUrl);
-    //     return _serverTagConfig.Current.ServerTagStorage[CurrentApiUrl];
-    // }
-    
     private ServerTagStorage GetTagStorageForIndex(int serverIndex)
     {
         var serverUri = GetServerByIndex(serverIndex).ServerUri;

@@ -101,7 +101,7 @@ public class DrawFolderTag : DrawFolderBase
 
     private void AddTooltip()
     {
-        var serverName = _serverConfigManager.GetServerByIndex(_tag.ServerIndex).ServerName;
+        var serverName = _serverConfigManager.GetServerNameByIndex(_tag.ServerIndex);
         var serverText = $"For server {serverName}";
         UiSharedService.AttachToolTip( serverText + Environment.NewLine + OnlinePairs + " online" + Environment.NewLine + TotalPairs + " total");
     }
