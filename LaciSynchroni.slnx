@@ -6,5 +6,5 @@
     <File Path=".editorconfig" />
   </Folder>
   <Project Path="Common/LaciSynchroni.Common.csproj" />
-  <Project Path="SinusSynchronous/SinusSynchronous.csproj" />
+  <Project Path="LaciSynchroni/LaciSynchroni.csproj" />
 </Solution>
