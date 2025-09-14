@@ -487,10 +487,6 @@ public class CompactUi : WindowMediatorSubscriberBase
         if (_apiController.ConnectedServerIndexes.Any(p => p == serverId))
         {
             ImGui.TextColored(ImGuiColors.ParsedGreen, serverName);
-            if (ImGui.IsItemClicked() && ImGui.IsWindowHovered())
-            {
-                _serverConfigManager.SelectServer(serverId);
-            }
         }
         else
             ImGui.TextUnformatted(serverName);

@@ -202,7 +202,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                     "loading of other characters. It is recommended to keep it enabled. You can change this setting later anytime in the Laci settings.", ImGuiColors.DalamudYellow);
             }
         }
-        else if (!_uiShared.ApiController.IsServerAlive(_serverConfigurationManager.CurrentServerIndex))
+        else if (!_uiShared.ApiController.AnyServerConnected)
         {
             using (_uiShared.UidFont.Push())
                 ImGui.TextUnformatted("Service Registration");
@@ -229,7 +229,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
             {
                 if (node)
                 {
-                    serverIdx = _uiShared.DrawServiceSelection(selectOnChange: true, showConnect: false);
+                    serverIdx = _uiShared.DrawServiceSelection(serverIdx);
                     if (serverIdx != _prevIdx)
                     {
                         _uiShared.ResetOAuthTasksState();
@@ -278,24 +278,18 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                     ImGui.SameLine();
                     if (ImGui.Button(buttonText))
                     {
-                        if (_serverConfigurationManager.CurrentServer == null) _serverConfigurationManager.SelectServer(0);
-                        if (!_serverConfigurationManager.CurrentServer!.SecretKeys.Any())
+                        // For now, IntroUI works on the first server. That is the default server that has been added on plugin boot if none exists.
+                        var server = _serverConfigurationManager.GetServerByIndex(serverIdx);
+                        var secretKey = new SecretKey()
                         {
-                            _serverConfigurationManager.CurrentServer!.SecretKeys.Add(_serverConfigurationManager.CurrentServer.SecretKeys.Select(k => k.Key).LastOrDefault() + 1, new SecretKey()
-                            {
-                                FriendlyName = $"Secret Key added on Setup ({DateTime.Now:yyyy-MM-dd})",
-                                Key = _secretKey,
-                            });
-                            _serverConfigurationManager.AddCurrentCharacterToServer();
-                        }
-                        else
-                        {
-                            _serverConfigurationManager.CurrentServer!.SecretKeys[0] = new SecretKey()
-                            {
-                                FriendlyName = $"Secret Key added on Setup ({DateTime.Now:yyyy-MM-dd})",
-                                Key = _secretKey,
-                            };
-                        }
+                            FriendlyName = $"Secret Key added on Setup ({DateTime.Now:yyyy-MM-dd})",
+                            Key = _secretKey,
+                        };
+                        server.SecretKeys[0] = secretKey;
+                        _serverConfigurationManager.AddCurrentCharacterToServer(serverIdx);
+                        // Just assume the user has seen the census popup, since the popup itself is disabled.
+                        _serverConfigurationManager.ShownCensusPopup = true;
+                        _serverConfigurationManager.Save();
                         _secretKey = string.Empty;
                         _ = Task.Run(() => _uiShared.ApiController.CreateConnectionsAsync(serverIdx));
                     }

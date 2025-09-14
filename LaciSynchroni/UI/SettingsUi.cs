@@ -68,7 +68,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
     private Task<List<string>?>? _downloadServersTask = null;
     private Task<List<string>?>? _speedTestTask = null;
     private CancellationTokenSource? _speedTestCts;
-    private int _lastSelectedServerIndex = -1;
+    private int _lastSelectedServerIndex = 0;
     private string _lastSelectedServerName = string.Empty;
     private Task<(bool Success, bool PartialSuccess, string Result)>? _secretKeysConversionTask = null;
     private CancellationTokenSource _secretKeysConversionCts = new CancellationTokenSource();
@@ -1292,10 +1292,10 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 }
 
                 ImGui.SetNextItemWidth(200);
-                var serverTransport = _serverConfigurationManager.GetTransport();
+                var serverTransport = _serverConfigurationManager.GetTransport(_lastSelectedServerIndex);
                 _uiShared.DrawCombo("Server Transport Type", Enum.GetValues<HttpTransportType>().Where(t => t != HttpTransportType.None),
                     (v) => v.ToString(),
-                    onSelected: (t) => _serverConfigurationManager.SetTransportType(t),
+                    onSelected: (t) => _serverConfigurationManager.SetTransportType(_lastSelectedServerIndex, t),
                     serverTransport);
                 _uiShared.DrawHelpText("You normally do not need to change this, if you don't know what this is or what it's for, keep it to WebSockets." + Environment.NewLine
                     + "If you run into connection issues with e.g. VPNs, try ServerSentEvents first before trying out LongPolling." + UiSharedService.TooltipSeparator
@@ -1523,15 +1523,9 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                         if (!useOauth)
                         {
-                            _uiShared.DrawCombo("Secret Key###" + item.CharacterName + i, keys, (w) => w.Value.FriendlyName,
-                                (w) =>
-                                {
-                                    if (w.Key != item.SecretKeyIdx)
-                                    {
-                                        item.SecretKeyIdx = w.Key;
-                                        _serverConfigurationManager.Save();
-                                    }
-                                }, EqualityComparer<KeyValuePair<int, SecretKey>>.Default.Equals(keys.FirstOrDefault(f => f.Key == item.SecretKeyIdx), default) ? keys.First() : keys.First(f => f.Key == item.SecretKeyIdx));
+                            var imGuiId = "Secret Key###" + item.CharacterName + _lastSelectedServerIndex + i;
+                            var comparator = EqualityComparer<KeyValuePair<int, SecretKey>>.Default.Equals(keys.FirstOrDefault(f => f.Key == item.SecretKeyIdx), default) ? keys.First() : keys.First(f => f.Key == item.SecretKeyIdx);
+                            _uiShared.DrawCombo(imGuiId, keys, (w) => w.Value.FriendlyName, (w) => ChangeSecretKey(w.Key, item), comparator);
                         }
                         else
                         {
@@ -1634,7 +1628,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
             if (ImGui.BeginTabItem("Permission Settings"))
             {
                 _uiShared.BigText("Default Permission Settings");
-                if (selectedServer == _serverConfigurationManager.CurrentServer && _apiController.IsServerConnected(_lastSelectedServerIndex))
+                if (_apiController.IsServerConnected(_lastSelectedServerIndex))
                 {
                     UiSharedService.TextWrapped("Note: The default permissions settings here are not applied retroactively to existing pairs or joined Syncshells.");
                     UiSharedService.TextWrapped("Note: The default permissions settings here are sent and stored on the connected service.");
@@ -1711,9 +1705,9 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
             if (ImGui.BeginTabItem("Account & Data"))
             {
-                if (selectedServer == _serverConfigurationManager.CurrentServer)
+                if (_apiController.IsServerConnected(_lastSelectedServerIndex))
                 {
-                    UiSharedService.ColorTextWrapped("For any changes to be applied to the current service you need to reconnect to the service.", ImGuiColors.DalamudYellow);
+                    UiSharedService.ColorTextWrapped("For any changes to be applied to a connected service you need to reconnect to the service after your changes.", ImGuiColors.DalamudYellow);
                 }
 
                 if (ApiController.IsServerAlive(_lastSelectedServerIndex))
@@ -1800,6 +1794,15 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
     }
 
+    private void ChangeSecretKey(int newIndex, Authentication authentication)
+    {
+        if (newIndex != authentication.SecretKeyIdx)
+        {
+            authentication.SecretKeyIdx = newIndex;
+            _serverConfigurationManager.Save();
+        }
+    }
+
     private void DrawMultiServerInterfaceTable()
     {
         _uiShared.BigText($"Registered services");
@@ -1828,7 +1831,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     new Vector2(0, rowHeight)))
                 {
                     _lastSelectedServerIndex = server.Id;
-                    _serverConfigurationManager.SelectServer(server.Id);
 
                     if (_lastSelectedServerIndex != server.Id)
                     {
@@ -1883,14 +1885,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
             {
                 if (_apiController.IsServerConnected(serverId))
                 {
-                    _serverConfigurationManager.CurrentServer.FullPause = true;
+                    _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex).FullPause = true;
                     _serverConfigurationManager.Save();
                     _ = _apiController.PauseConnectionAsync(serverId);
                 }
                 else
                 {
-                    _serverConfigurationManager.SelectServer(serverId);
-                    _serverConfigurationManager.CurrentServer.FullPause = false;
+                    _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex).FullPause = false;
                     _serverConfigurationManager.Save();
                     _ = _apiController.CreateConnectionsAsync(serverId);
                 }
@@ -2044,9 +2045,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawSettingsContent()
     {
-        if (_apiController.AnyServerConnected && _lastSelectedServerIndex < 0)
-            _lastSelectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
-
         _lastSelectedServerName = _apiController.GetServerNameByIndex(_lastSelectedServerIndex);
 
         if (_apiController.IsServerConnected(_lastSelectedServerIndex))

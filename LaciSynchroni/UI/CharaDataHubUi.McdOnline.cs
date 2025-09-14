@@ -591,17 +591,6 @@ internal sealed partial class CharaDataHubUi
             return;
         }
 
-        if(!_apiController.ConnectedServerIndexes.Any(p=> p == _selectedServerIndex))
-        {
-            _selectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
-        }
-
-        if (_selectedServerIndex != _serverConfigurationManager.CurrentServerIndex && !_charaDataManager.Initialized)
-        {
-            _serverConfigurationManager.CurrentServerIndex = _selectedServerIndex;
-            _ = _charaDataManager.GetAllData(_selectedServerIndex, _disposalCts.Token);
-        }
-
         ImGuiHelpers.ScaledDummy(5);
         using (ImRaii.Disabled((!_charaDataManager.GetAllDataTask?.IsCompleted ?? false)
             || (_charaDataManager.DataGetTimeoutTask != null && !_charaDataManager.DataGetTimeoutTask.IsCompleted)))

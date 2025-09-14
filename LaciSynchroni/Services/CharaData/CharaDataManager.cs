@@ -43,6 +43,9 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
     private CancellationTokenSource _getAllDataCts = new();
     private CancellationTokenSource _getSharedDataCts = new();
     private CancellationTokenSource _uploadCts = new();
+    // We can only store data for one server. When we swap the selection, the data should be cleared
+    // whenever we load data, we set this index. This way, we know which server the data belongs to.
+    private int _dataServerIndex;
 
     public CharaDataManager(ILogger<CharaDataManager> logger, ApiController apiController,
         CharaDataFileHandler charaDataFileHandler,
@@ -62,6 +65,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         _serverConfig = serverConfig;
         syncMediator.Subscribe<ConnectedMessage>(this, (msg) =>
         {
+            if (msg.serverIndex != _dataServerIndex)
+            {
+                // Don't do anything if an unrelated server connected
+                return;
+            }
             _connectCts?.Cancel();
             _connectCts?.Dispose();
             _connectCts = new();
@@ -82,9 +90,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         });
         syncMediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            if(msg.ServerIndex != _serverConfig.CurrentServerIndex)
+            if (msg.ServerIndex != _dataServerIndex)
+            {
+                // Don't do anything if an unrelated server connected
                 return;
-
+            }
             _ownCharaData.Clear();
             _metaInfoCache.Clear();
             _sharedWithYouData.Clear();
@@ -367,6 +377,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
 
     public async Task GetAllData(int serverIndex, CancellationToken cancelToken)
     {
+        _dataServerIndex = serverIndex;
         foreach (var data in _ownCharaData)
         {
             _metaInfoCache.Remove(data.Key, out _);

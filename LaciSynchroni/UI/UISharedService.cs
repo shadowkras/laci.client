@@ -852,28 +852,26 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
         return true;
     }
 
-    public int DrawServiceSelection(bool selectOnChange = false, bool showConnect = true, bool hideServiceCreation = false, bool hideSelectLabel = false, bool showMinifiedConnect = false)
+    public int DrawServiceSelection(int currentServerIndex)
     {
         string[] comboEntries = _serverConfigurationManager.GetServerNames();
 
         if (_serverSelectionIndex == -1)
         {
-            _serverSelectionIndex = Array.IndexOf(_serverConfigurationManager.GetServerApiUrls(), _serverConfigurationManager.CurrentApiUrl);
-        }
-        if (_serverSelectionIndex == -1 || _serverSelectionIndex >= comboEntries.Length)
-        {
+            // Flip to first server
             _serverSelectionIndex = 0;
         }
+        bool isCurrent = _serverSelectionIndex == currentServerIndex;
         for (int i = 0; i < comboEntries.Length; i++)
         {
-            if (string.Equals(_serverConfigurationManager.CurrentServer?.ServerName, comboEntries[i], StringComparison.OrdinalIgnoreCase))
+            if (isCurrent)
                 comboEntries[i] += " [Current]";
         }
-        var buttonSize = (!showConnect ? new Vector2(0, 0) : showMinifiedConnect ? GetIconButtonSize(FontAwesomeIcon.Link) : new Vector2(GetIconTextButtonSize(FontAwesomeIcon.Link, "Reconnect"), 0)).X;
-        buttonSize += hideSelectLabel ? 0 : ImGui.CalcTextSize("Select Service").X;
+
+        var buttonSize = ImGui.CalcTextSize("Select Service").X;
 
         ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - buttonSize - ImGui.GetStyle().ItemSpacing.X);
-        if (ImGui.BeginCombo(hideSelectLabel ? "" : "Select Service", comboEntries[_serverSelectionIndex]))
+        if (ImGui.BeginCombo("Select Service", comboEntries[_serverSelectionIndex]))
         {
             for (int i = 0; i < comboEntries.Length; i++)
             {
@@ -881,10 +879,6 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                 if (ImGui.Selectable(comboEntries[i], isSelected))
                 {
                     _serverSelectionIndex = i;
-                    if (selectOnChange)
-                    {
-                        _serverConfigurationManager.SelectServer(i);
-                    }
                 }
 
                 if (isSelected)
@@ -896,58 +890,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
             ImGui.EndCombo();
         }
 
-        if (showConnect)
-        {
-            var serverState = _apiController.GetServerStateForServer(_serverSelectionIndex);
-            bool isCurrentServer = _serverSelectionIndex == _serverConfigurationManager.CurrentServerIndex;
-            bool isConnectingOrConnected = isCurrentServer && serverState is ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting;
-            ImGui.SameLine();
-            if (showMinifiedConnect)
-            {
-                var color = GetBoolColor(!isConnectingOrConnected);
-                var connectedIcon = isConnectingOrConnected ? FontAwesomeIcon.Unlink : FontAwesomeIcon.Link;
-
-                using (ImRaii.PushColor(ImGuiCol.Text, color))
-                {
-                    if (IconButton(connectedIcon))
-                    {
-                        if (isConnectingOrConnected && _serverConfigurationManager.CurrentServer != null && !_serverConfigurationManager.CurrentServer.FullPause)
-                        {
-                            _serverConfigurationManager.CurrentServer.FullPause = true;
-                            _serverConfigurationManager.Save();
-                        }
-                        else if (!isCurrentServer)
-                        {
-                            _serverConfigurationManager.SelectServer(_serverSelectionIndex);
-                        }
-                        else if (!isConnectingOrConnected && _serverConfigurationManager.CurrentServer != null && _serverConfigurationManager.CurrentServer.FullPause)
-                        {
-                            _serverConfigurationManager.SelectServer(_serverSelectionIndex);
-                            _serverConfigurationManager.CurrentServer.FullPause = false;
-                            _serverConfigurationManager.Save();
-                        }
-
-                        _ = _apiController.CreateConnectionsAsync(_serverSelectionIndex);
-                    }
-                }
-            }
-            else
-            {
-                var text = "Connect";
-                if (isCurrentServer) text = "Reconnect";
-                if (IconTextButton(FontAwesomeIcon.Link, text))
-                {
-                    _serverConfigurationManager.SelectServer(_serverSelectionIndex);
-                    _ = _apiController.CreateConnectionsAsync(_serverSelectionIndex);
-                }
-            }
-
-        }
-
-        if (!hideServiceCreation)
-        {
-            DrawAddCustomService();
-        }
+        DrawAddCustomService();
 
         return _serverSelectionIndex;
     }
