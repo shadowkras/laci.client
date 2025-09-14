@@ -201,10 +201,31 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        _connection = InitializeHubConnection(cancellationToken);
-        InitializeApiHooks();
+        // TODO: remove this temporary config migration stuff
+        {
+            var overridePaths = new[] { null, IServerHub.Path, "/mare" };
+            foreach (var pathOverride in overridePaths)
+            {
+                if (!ServerToUse.UseAdvancedUris && pathOverride == null)
+                    continue;
 
-        await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    _connection = InitializeHubConnection(cancellationToken, pathOverride);
+                    InitializeApiHooks();
+
+                    await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    if (string.Equals(pathOverride, overridePaths[^1], StringComparison.Ordinal))
+                    {
+                        throw;
+                    }
+                }
+            }
+        }
+
         ConnectionDto = await GetConnectionDto().ConfigureAwait(false);
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
         {
@@ -286,7 +307,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         Logger.LogDebug("Current HubConnection disposed");
     }
 
-    private HubConnection InitializeHubConnection(CancellationToken ct)
+    private HubConnection InitializeHubConnection(CancellationToken ct, string? hubPathOverride = null)
     {
         var transportType = ServerToUse.HttpTransportType switch
         {
@@ -309,11 +330,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var useAdvancedUris = ServerToUse.UseAdvancedUris;
         var serverHubUri = ServerToUse.ServerHubUri;
 
-        var hubUrl = useAdvancedUris && !string.IsNullOrEmpty(serverHubUri) ?
-            serverHubUri :
-            ServerToUse.ServerUri + IServerHub.Path;
+        var hasCustomHubPath = useAdvancedUris && !string.IsNullOrEmpty(serverHubUri) && string.IsNullOrEmpty(hubPathOverride);
+        var hubUrl = hasCustomHubPath ? serverHubUri : ServerToUse.ServerUri + (hubPathOverride ?? IServerHub.Path);
 
-        _logger.LogDebug("Building new HubConnection using transport {transport}", transportType);
+        _logger.LogDebug("Building new HubConnection using transport {Transport}", transportType);
 
         _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>

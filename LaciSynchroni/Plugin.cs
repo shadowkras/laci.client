@@ -45,8 +45,24 @@ public sealed class Plugin : IDalamudPlugin
         ITextureProvider textureProvider, IContextMenu contextMenu, IGameInteropProvider gameInteropProvider, IGameConfig gameConfig,
         ISigScanner sigScanner)
     {
-        if (!Directory.Exists(pluginInterface.ConfigDirectory.FullName))
-            Directory.CreateDirectory(pluginInterface.ConfigDirectory.FullName);
+        // TODO: remove this temporary config migration stuff
+        {
+            var configDir = Path.GetFullPath(Path.Combine(pluginInterface.ConfigFile.FullName, "..", pluginInterface.InternalName));
+            var legacyConfigDir = Path.GetFullPath(Path.Combine(configDir, "..", "SinusSynchronous"));
+            if (!Directory.Exists(configDir) && Directory.Exists(legacyConfigDir))
+            {
+                pluginLog.Info($"Found old config at {legacyConfigDir}, copying to {configDir}");
+                CopyFilesRecursively(new DirectoryInfo(legacyConfigDir), new DirectoryInfo(configDir));
+            }
+
+            static void CopyFilesRecursively(DirectoryInfo source, DirectoryInfo target) {
+                foreach (var dir in source.GetDirectories())
+                    CopyFilesRecursively(dir, target.CreateSubdirectory(dir.Name));
+                foreach (var file in source.GetFiles())
+                    file.CopyTo(Path.Combine(target.FullName, file.Name));
+            }
+        }
+
         var traceDir = Path.Join(pluginInterface.ConfigDirectory.FullName, "tracelog");
         if (!Directory.Exists(traceDir))
             Directory.CreateDirectory(traceDir);
