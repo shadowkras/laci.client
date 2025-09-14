@@ -1,7 +1,7 @@
-# Sinus Synchronous Dalamud Plugin
+# Laci Synchroni Dalamud Plugin
 
-Available at [This dalamud Repo](https://raw.githubusercontent.com/MareSynchronos2/repo/main/plogonmaster.json)
+Available at [this Dalamud repo](https://raw.githubusercontent.com/LaciSynchroni/repo/main/plogonmaster.json)
 
-# [Sinus Synchronous Discord](https://discord.gg/qQQSz3jZnK)
+## [Laci Synchroni Discord](https://discord.gg/qQQSz3jZnK)
 
 Readme TBD
