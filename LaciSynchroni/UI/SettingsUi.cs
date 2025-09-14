@@ -1830,8 +1830,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 if (ImGui.Selectable("##row", isSelected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowItemOverlap,
                     new Vector2(0, rowHeight)))
                 {
-                    _lastSelectedServerIndex = server.Id;
-
                     if (_lastSelectedServerIndex != server.Id)
                     {
                         _uiShared.ResetOAuthTasksState();
