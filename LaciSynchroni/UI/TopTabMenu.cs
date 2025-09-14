@@ -510,7 +510,7 @@ public class TopTabMenu
         }
 
         ImGui.BeginDisabled(!_apiController.AnyServerConnected);
-        if (_uiSharedService.IconTextButton(FontAwesomeIcon.UserCircle, "Edit Laci Synchroni Profile", buttonX))
+        if (_uiSharedService.IconTextButton(FontAwesomeIcon.UserCircle, "Edit Profile", buttonX))
         {
             _syncMediator.Publish(new UiToggleMessage(typeof(EditProfileUi)));
         }

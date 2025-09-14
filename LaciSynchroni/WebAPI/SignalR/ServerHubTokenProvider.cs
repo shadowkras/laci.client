@@ -129,7 +129,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                         NotificationType.Error));
                 else
                     Mediator.Publish(new NotificationMessage("Error generating token",
-                        $"Your authentication token could not be generated. Check {_dalamudUtil.GetPluginName()} Main UI (${CommandManagerService.CommandName} in chat) to see the error message.",
+                        $"Your authentication token could not be generated. Check {_dalamudUtil.GetPluginName()} Main UI ({CommandManagerService.CommandName} in chat) to see the error message.",
                         NotificationType.Error));
                 Mediator.Publish(new DisconnectedMessage(_serverIndex));
                 throw new SyncAuthFailureException(response);
