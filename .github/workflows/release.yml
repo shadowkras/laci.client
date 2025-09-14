@@ -1,0 +1,107 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+.[0-9]+'
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      actions: read
+      contents: write
+      attestations: write
+    runs-on: windows-latest
+    if: github.repository_owner == 'LaciSynchroni'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Check if testing version
+        id: get_is_testing
+        run: Write-Output "IS_TESTING=$(([Version]::Parse('${{ github.ref_name }}').Revision -gt 0).ToString().ToLower())" >> $env:GITHUB_OUTPUT
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 9.x
+          dotnet-quality: ga
+
+      - name: Download Dalamud
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Force latest.zip "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      - name: Build
+        run: dotnet build ./LaciSynchroni/LaciSynchroni.csproj -c Release -o bin /p:ContinuousIntegrationBuild=true /p:Version=${{ github.ref_name }}
+
+      - name: Get packager manifest
+        id: load_packager_manifest
+        run: Write-Output "MANIFEST_JSON<<EOF`n$(Get-Content -Raw ./bin/LaciSynchroni/LaciSynchroni.json)`nEOF" >> $env:GITHUB_OUTPUT
+
+      - name: Rename artifact
+        run: Move-Item -Path ./bin/LaciSynchroni/latest.zip -Destination ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          upload-release-assets: false
+          format: spdx-json
+          file: ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
+          output-file: ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}_sbom.spdx.json
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
+
+      - name: Generate SBOM attestation
+        uses: actions/attest-sbom@v3
+        with:
+          subject-path: ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
+          sbom-path: ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}_sbom.spdx.json
+
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Laci Synchroni ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ steps.get_is_testing.outputs.IS_TESTING }}
+          files: |
+            ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
+            ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}_sbom.spdx.json
+
+      - name: Request Repository Update (Generate App Token, 1/2)
+        id: app_token
+        uses: actions/create-github-app-token@v2
+        with:
+          owner: ${{ github.repository_owner }}
+          repositories: repo
+          app-id: ${{ secrets.BUILD_ORGANIZER_APP_ID }}
+          private-key: ${{ secrets.BUILD_ORGANIZER_APP_PRIVATE_KEY }}
+
+      - name: Request Repository Update (Trigger Workflow, 2/2)
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app_token.outputs.token }}
+          script: |
+            github.rest.repos.createDispatchEvent({
+              owner: "${{ github.repository_owner }}",
+              repo: "repo",
+              event_type: "new-release",
+              client_payload: {
+                "tag": "${{ github.ref_name }}",
+                "is_testing": ${{ steps.get_is_testing.outputs.IS_TESTING }},
+                "api_level": "${{ fromJSON(steps.load_packager_manifest.outputs.MANIFEST_JSON).DalamudApiLevel }}",
+                "asset_url": "${{ fromJSON(steps.create_release.outputs.assets)[0].browser_download_url }}"
+              },
+            })
