@@ -38,13 +38,10 @@ public class ServerConfigurationManager
         _syncConfigService = syncConfigService;
         _httpClient = httpClient;
         _syncMediator = syncMediator;
-        EnsureMainExists();
     }
 
     public IEnumerable<int> ServerIndexes => _serverConfigService.Current.ServerStorage.Select((_, i) => i);
 
-    public string CurrentApiUrl => CurrentServer.ServerUri;
-    public ServerStorage CurrentServer => _serverConfigService.Current.ServerStorage[CurrentServerIndex];
     public bool AnyServerConfigured => _serverTagConfig.Current.ServerTagStorage.Count > 0;
     public bool SendCensusData
     {
@@ -69,38 +66,6 @@ public class ServerConfigurationManager
         {
             _serverConfigService.Current.ShownCensusPopup = value;
             _serverConfigService.Save();
-        }
-    }
-
-    public int CurrentServerIndex
-    {
-        set
-        {
-            _serverConfigService.Current.CurrentServer = value;
-            _serverConfigService.Save();
-        }
-        get
-        {
-            if (_serverConfigService.Current.CurrentServer < 0)
-            {
-                _serverConfigService.Current.CurrentServer = 0;
-                _serverConfigService.Save();
-            }
-
-            return _serverConfigService.Current.CurrentServer;
-        }
-    }
-
-    public bool ShowServerPickerInMainMenu
-    {
-        set
-        {
-            _serverConfigService.Current.ShowServerPickerInMainMenu = value;
-            _serverConfigService.Save();
-        }
-        get
-        {
-            return _serverConfigService.Current.ShowServerPickerInMainMenu;
         }
     }
 
@@ -145,15 +110,9 @@ public class ServerConfigurationManager
         return null;
     }
 
-    public string? GetSecretKey(out bool hasMulti, int serverIdx = -1)
+    public string? GetSecretKey(out bool hasMulti, int serverIdx)
     {
-        ServerStorage? currentServer;
-        currentServer = serverIdx == -1 ? CurrentServer : GetServerByIndex(serverIdx);
-        if (currentServer == null)
-        {
-            currentServer = new();
-            Save();
-        }
+        var currentServer = GetServerByIndex(serverIdx);
         hasMulti = false;
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
@@ -216,16 +175,7 @@ public class ServerConfigurationManager
     
     public ServerStorage GetServerByIndex(int idx)
     {
-        try
-        {
-            return _serverConfigService.Current.ServerStorage[idx];
-        }
-        catch
-        {
-            _serverConfigService.Current.CurrentServer = 0;
-            EnsureMainExists();
-            return CurrentServer!;
-        }
+        return _serverConfigService.Current.ServerStorage[idx];
     }
 
     public string GetDiscordUserFromToken(ServerStorage server)
@@ -266,7 +216,8 @@ public class ServerConfigurationManager
 
     public bool HasValidConfig()
     {
-        return CurrentServer != null && CurrentServer.Authentications.Count > 0;
+        return _serverConfigService.Current.ServerStorage.Count > 0 &&
+               _serverConfigService.Current.ServerStorage.Exists(server => server.Authentications.Count >= 1);
     }
 
     public void Save()
@@ -276,16 +227,8 @@ public class ServerConfigurationManager
         _serverConfigService.Save();
     }
 
-    public void SelectServer(int idx)
+    internal void AddCurrentCharacterToServer(int serverSelectionIndex)
     {
-        _serverConfigService.Current.CurrentServer = idx;
-        CurrentServer!.FullPause = false;
-        Save();
-    }
-
-    internal void AddCurrentCharacterToServer(int serverSelectionIndex = -1)
-    {
-        if (serverSelectionIndex == -1) serverSelectionIndex = CurrentServerIndex;
         var server = GetServerByIndex(serverSelectionIndex);
         if (server.Authentications.Any(c => string.Equals(c.CharacterName, _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult(), StringComparison.Ordinal)
                 && c.WorldId == _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult()))
@@ -296,7 +239,7 @@ public class ServerConfigurationManager
             CharacterName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult(),
             WorldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult(),
             SecretKeyIdx = !server.UseOAuth2 ? server.SecretKeys.Last().Key : -1,
-            LastSeenCID = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult()
+            LastSeenCID = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult(),
         });
         Save();
     }
@@ -379,12 +322,6 @@ public class ServerConfigurationManager
 
     internal void DeleteServer(ServerStorage selectedServer)
     {
-        if (Array.IndexOf(_serverConfigService.Current.ServerStorage.ToArray(), selectedServer) <
-            _serverConfigService.Current.CurrentServer)
-        {
-            _serverConfigService.Current.CurrentServer--;
-        }
-
         _serverConfigService.Current.ServerStorage.Remove(selectedServer);
         Save();
     }
@@ -519,15 +456,6 @@ public class ServerConfigurationManager
         return _serverTagConfig.Current.ServerTagStorage[serverUri];
     }
 
-    private void EnsureMainExists()
-    {
-        if (_serverConfigService.Current.ServerStorage.Count == 0 || !string.Equals(_serverConfigService.Current.ServerStorage[0].ServerUri, ApiController.MainServiceUri, StringComparison.OrdinalIgnoreCase))
-        {
-            _serverConfigService.Current.ServerStorage.Insert(0, new ServerStorage() { ServerUri = ApiController.MainServiceUri, ServerName = ApiController.MainServer, UseOAuth2 = true });
-        }
-        Save();
-    }
-
     private void TryCreateNotesStorage(string apiUrl)
     {
         if (!_notesConfig.Current.ServerNotes.ContainsKey(apiUrl))
@@ -606,14 +534,14 @@ public class ServerConfigurationManager
         return discordToken;
     }
 
-    public HttpTransportType GetTransport()
+    public HttpTransportType GetTransport(int serverIndex)
     {
-        return CurrentServer.HttpTransportType;
+        return GetServerByIndex(serverIndex).HttpTransportType;
     }
 
-    public void SetTransportType(HttpTransportType httpTransportType)
+    public void SetTransportType(int serverIndex, HttpTransportType httpTransportType)
     {
-        CurrentServer.HttpTransportType = httpTransportType;
+        GetServerByIndex(serverIndex).HttpTransportType = httpTransportType;
         Save();
     }
 }

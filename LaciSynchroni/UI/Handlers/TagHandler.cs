@@ -98,11 +98,11 @@ public class TagHandler
     {
         if (IsTagOpen(serverIndex, tag))
         {
-            _serverConfigurationManager.AddOpenPairTag(serverIndex, tag);
+            _serverConfigurationManager.RemoveOpenPairTag(serverIndex, tag);
         }
         else
         {
-            _serverConfigurationManager.RemoveOpenPairTag(serverIndex, tag);
+            _serverConfigurationManager.AddOpenPairTag(serverIndex, tag);
         }
     }
 
@@ -110,11 +110,11 @@ public class TagHandler
     {
         if (IsGlobalTagOpen(tag))
         {
-            _serverConfigurationManager.AddGlobalOpenPairTag(tag);
+            _serverConfigurationManager.RemoveOpenGlobalPairTag(tag);
         }
         else
         {
-            _serverConfigurationManager.RemoveOpenGlobalPairTag(tag);
+            _serverConfigurationManager.AddGlobalOpenPairTag(tag);
         }
     }
 }

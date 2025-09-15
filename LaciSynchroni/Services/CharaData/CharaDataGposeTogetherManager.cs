@@ -31,6 +31,9 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     private WorldData? _lastWorldData;
     private CancellationTokenSource _lobbyCts = new();
     private int _poseGenerationExecutions = 0;
+    // We can only store data for one server. When we swap the selection, the data should be cleared
+    // whenever we load data, we set this index. This way, we know which server the data belongs to.
+    private int _dataServerIndex;
 
     public CharaDataGposeTogetherManager(ILogger<CharaDataGposeTogetherManager> logger, SyncMediator mediator,
             ApiController apiController, IpcCallerBrio brio, DalamudUtilService dalamudUtil, VfxSpawnManager vfxSpawnManager,
@@ -58,6 +61,11 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<ConnectedMessage>(this, (msg) =>
         {
+            if (msg.serverIndex != _dataServerIndex)
+            {
+                // Data belongs to a different server, no need to do anything
+                return;
+            }
             if (_usersInLobby.Count > 0 && !string.IsNullOrEmpty(CurrentGPoseLobbyId))
             {
                 JoinGPoseLobby(msg.serverIndex, CurrentGPoseLobbyId, isReconnecting: true);
@@ -85,7 +93,11 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            LeaveGPoseLobby(msg.ServerIndex);
+            if (msg.ServerIndex == _dataServerIndex)
+            {
+                // Only leave if the server we are gposing on disconnected
+                LeaveGPoseLobby(msg.ServerIndex);
+            }
         });
 
         _apiController = apiController;
@@ -144,6 +156,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
 
     internal void CreateNewLobby(int serverIndex)
     {
+        _dataServerIndex = serverIndex;
         _ = Task.Run(async () =>
         {
             ClearLobby();
@@ -163,6 +176,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         {
             var otherUsers = await _apiController.GposeLobbyJoin(serverIndex, joinLobbyId).ConfigureAwait(false);
             ClearLobby();
+            _dataServerIndex = serverIndex;
             if (otherUsers.Any())
             {
                 LastGPoseLobbyId = string.Empty;
