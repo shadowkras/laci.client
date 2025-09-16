@@ -895,10 +895,11 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
         return _serverSelectionIndex;
     }
 
-    public void DrawAddCustomService()
+    public void DrawAddCustomService(bool defaultOpen = false)
     {
+        var defaultOpenFlag = defaultOpen ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
         ImGuiHelpers.ScaledDummy(5);
-        if (ImGui.TreeNode("Add New Service"))
+        if (ImRaii.TreeNode("Add New Service", defaultOpenFlag))
         {
             ImGui.SetNextItemWidth(250);
             ImGui.InputText("Custom Service Name", ref _customServerName, 255);
