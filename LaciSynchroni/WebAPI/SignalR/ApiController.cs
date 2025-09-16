@@ -49,7 +49,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         AutoConnectClients();
     }
 
-    public ServerState GetServerState(ServerIndex index)
+    public ServerState GetServerStateForServer(ServerIndex index)
     {
         return GetClientForServer(index)?._serverState ?? ServerState.Offline;
     }
@@ -57,6 +57,12 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     public bool IsServerConnected(int index)
     {
         return GetClientForServer(index)?._serverState == ServerState.Connected;
+    }
+
+    public bool IsServerConnectingOrConnected(int index)
+    {
+        var serverState = GetClientForServer(index)?._serverState;
+        return serverState is (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting);
     }
 
     public string GetServerNameByIndex(ServerIndex index)
@@ -71,7 +77,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     public bool IsServerAlive(int index)
     {
-        var serverState = GetServerState(index);
+        var serverState = GetServerStateForServer(index);
         return serverState is ServerState.Connected or ServerState.RateLimited
             or ServerState.Unauthorized or ServerState.Disconnected;
     }
@@ -92,12 +98,6 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     public DefaultPermissionsDto? GetDefaultPermissionsForServer(ServerIndex index)
     {
         return GetClientForServer(index)?.ConnectionDto?.DefaultPreferredPermissions;
-    }
-
-    public ServerState GetServerStateForServer(ServerIndex index)
-    {
-        // No client found means it's offline
-        return GetClientForServer(index)?._serverState ?? ServerState.Offline;
     }
 
     public bool AnyServerConnected
