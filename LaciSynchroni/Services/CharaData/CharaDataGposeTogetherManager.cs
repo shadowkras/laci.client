@@ -204,7 +204,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     {
         _ = Task.Run(async () =>
         {
-            var left = await _apiController.GposeLobbyLeave(serverIndex).ConfigureAwait(false);
+            var left = !_apiController.IsServerConnected(serverIndex) || await _apiController.GposeLobbyLeave(serverIndex).ConfigureAwait(false);
             if (left)
             {
                 if (_usersInLobby.Count != 0)
