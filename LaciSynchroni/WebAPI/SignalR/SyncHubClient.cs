@@ -204,16 +204,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         // TODO: remove this temporary config migration stuff
         {
             var overridePaths = new[] { null, IServerHub.Path, "/mare" };
-            bool connected = false;
             foreach (var pathOverride in overridePaths)
             {
                 if (!ServerToUse.UseAdvancedUris && pathOverride == null)
                     continue;
-
-                if (connected)
-                {
-                    continue;
-                }
 
                 try
                 {
@@ -221,7 +215,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                     InitializeApiHooks();
 
                     await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
-                    connected = true;
+                    break;
                 }
                 catch
                 {
