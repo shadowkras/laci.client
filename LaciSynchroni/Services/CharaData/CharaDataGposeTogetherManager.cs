@@ -95,8 +95,8 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         {
             if (msg.ServerIndex == _dataServerIndex)
             {
-                // Only leave if the server we are gposing on disconnected
-                LeaveGPoseLobby(msg.ServerIndex);
+                // Only clear if the server we are gposing on disconnected
+                ClearGposeLobbyState();
             }
         });
 
@@ -204,18 +204,21 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     {
         _ = Task.Run(async () =>
         {
-            var left = !_apiController.IsServerConnected(serverIndex) || await _apiController.GposeLobbyLeave(serverIndex).ConfigureAwait(false);
-            if (left)
-            {
-                if (_usersInLobby.Count != 0)
-                {
-                    LastGPoseLobbyId = CurrentGPoseLobbyId;
-                }
-
-                ClearLobby(revertCharas: true);
-                CurrentGPoseLobbyServerId = null;
-            }
+            var leftGposeLobby = await _apiController.GposeLobbyLeave(serverIndex).ConfigureAwait(false);
+            if (leftGposeLobby)
+                ClearGposeLobbyState();
         });
+    }
+
+    internal void ClearGposeLobbyState()
+    {
+        if (_usersInLobby.Count != 0)
+        {
+            LastGPoseLobbyId = CurrentGPoseLobbyId;
+        }
+
+        ClearLobby(revertCharas: true);
+        CurrentGPoseLobbyServerId = null;
     }
 
     protected override void Dispose(bool disposing)
