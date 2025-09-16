@@ -215,9 +215,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                     InitializeApiHooks();
 
                     await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
+                    break;
                 }
                 catch
                 {
+                    await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
                     if (string.Equals(pathOverride, overridePaths[^1], StringComparison.Ordinal))
                     {
                         throw;

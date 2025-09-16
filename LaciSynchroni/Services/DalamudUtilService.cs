@@ -145,9 +145,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
 
     public string GetPluginName()
     {
-        return _pluginInterface.InstalledPlugins.SingleOrDefault(
-                   x => string.Equals(x.InternalName, _pluginInterface.InternalName, StringComparison.Ordinal)
-               )?.Name
+        return _pluginInterface.InstalledPlugins.FirstOrDefault(x => string.Equals(x.InternalName, _pluginInterface.InternalName, StringComparison.Ordinal))?.Name
                ?? _pluginInterface.InternalName;
     }
 
