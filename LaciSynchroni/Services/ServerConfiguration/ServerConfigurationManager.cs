@@ -181,6 +181,7 @@ public class ServerConfigurationManager
             return storage[idx];
         }
 
+        _logger.LogWarning("The client tried to obtain data for a server that is not registered: {Idx}", idx);
         return new();
     }
 
