@@ -1,3 +1,4 @@
+using Dalamud.Utility;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Data.Extensions;
 using LaciSynchroni.Common.Dto;
@@ -32,6 +33,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private readonly bool _isWine;
 
     private readonly ILogger _logger;
+    // For testing if we can connect to the hub
+    private readonly HttpClient _httpClient;
     private readonly ILoggerProvider _loggerProvider;
     private readonly MultiConnectTokenService _multiConnectTokenService;
     private readonly PairManager _pairManager;
@@ -67,7 +70,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     public SyncHubClient(int serverIndex,
         ServerConfigurationManager serverConfigurationManager, PairManager pairManager,
         DalamudUtilService dalamudUtilService,
-        ILoggerFactory loggerFactory, ILoggerProvider loggerProvider, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService) : base(
+        ILoggerFactory loggerFactory, ILoggerProvider loggerProvider, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) : base(
         loggerFactory.CreateLogger(nameof(SyncHubClient) + serverIndex + "Mediator"), mediator)
     {
         ServerIndex = serverIndex;
@@ -76,6 +79,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _loggerProvider = loggerProvider;
         _multiConnectTokenService = multiConnectTokenService;
         _syncConfigService = syncConfigService;
+        _httpClient = httpClient;
         _pairManager = pairManager;
         _dalamudUtil = dalamudUtilService;
         _serverConfigurationManager = serverConfigurationManager;
@@ -202,31 +206,17 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
 
         // TODO: remove this temporary config migration stuff
+        var hubUri = await FindHubUrl().ConfigureAwait(false);
+        if (hubUri.IsNullOrEmpty())
         {
-            var overridePaths = new[] { null, IServerHub.Path, "/mare" };
-            foreach (var pathOverride in overridePaths)
-            {
-                if (!ServerToUse.UseAdvancedUris && pathOverride == null)
-                    continue;
-
-                try
-                {
-                    _connection = InitializeHubConnection(cancellationToken, pathOverride);
-                    InitializeApiHooks();
-
-                    await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
-                    break;
-                }
-                catch
-                {
-                    await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
-                    if (string.Equals(pathOverride, overridePaths[^1], StringComparison.Ordinal))
-                    {
-                        throw;
-                    }
-                }
-            }
+            await StopConnectionAsync(ServerState.NoHubFound).ConfigureAwait(false);
+            return;
         }
+      
+        _connection = InitializeHubConnection(cancellationToken, hubUri);
+        InitializeApiHooks();
+
+        await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
 
         ConnectionDto = await GetConnectionDto().ConfigureAwait(false);
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
@@ -241,6 +231,38 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
         await LoadIninitialPairsAsync().ConfigureAwait(false);
         await LoadOnlinePairsAsync().ConfigureAwait(false);
+    }
+
+    private async Task<string> FindHubUrl()
+    {
+        var configuredHubUri = ServerToUse.ServerHubUri.Replace("wss://", "https://").Replace("ws://", "http://");
+        var baseUri = ServerToUse.ServerUri.Replace("wss://", "https://").Replace("ws://", "http://");
+        if (!baseUri.EndsWith("/", StringComparison.Ordinal))
+        {
+            baseUri += "/";
+        }
+        
+        // Essentially, we try every hub we are aware of plus the configured hub to see if we can find a connection
+        var hubsToCheck = new[] { configuredHubUri, baseUri + IServerHub.Path, baseUri + "/mare" };
+        foreach (var hubToCheck in hubsToCheck)
+        {
+            if (hubToCheck.IsNullOrEmpty())
+            {
+                continue;
+            }
+            var resHub = await _httpClient.GetAsync(hubToCheck).ConfigureAwait(false);
+            // If we get a 401, 200 or 204 we have found a hub. The last two should not happen, 401 means that the URL is valid and likely a hub connection
+            // We could try to emulate the /negotiate, but for now, this should work just as well
+            if (resHub.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.OK or HttpStatusCode.NoContent)
+            {
+                Logger.LogInformation("{HubUri}: Valid hub, using", hubToCheck);
+                return hubToCheck;
+            }
+            Logger.LogWarning("{HubUri}: Not valid, attempting next hub", hubToCheck);
+        }
+
+        Logger.LogWarning("Unable to find any hub to connect to, aborting connection attempt.");
+        return "";
     }
 
     private async Task UpdateToken(CancellationToken cancellationToken)
@@ -309,7 +331,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         Logger.LogDebug("Current HubConnection disposed");
     }
 
-    private HubConnection InitializeHubConnection(CancellationToken ct, string? hubPathOverride = null)
+    private HubConnection InitializeHubConnection(CancellationToken ct, string hubUrl)
     {
         var transportType = ServerToUse.HttpTransportType switch
         {
@@ -328,12 +350,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             _logger.LogDebug("Wine detected, falling back to ServerSentEvents / LongPolling");
             transportType = HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling;
         }
-
-        var useAdvancedUris = ServerToUse.UseAdvancedUris;
-        var serverHubUri = ServerToUse.ServerHubUri;
-
-        var hasCustomHubPath = useAdvancedUris && !string.IsNullOrEmpty(serverHubUri) && string.IsNullOrEmpty(hubPathOverride);
-        var hubUrl = hasCustomHubPath ? serverHubUri : ServerToUse.ServerUri + (hubPathOverride ?? IServerHub.Path);
 
         _logger.LogDebug("Building new HubConnection using transport {Transport}", transportType);
 

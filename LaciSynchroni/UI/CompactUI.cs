@@ -920,6 +920,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             ServerState.OAuthMisconfigured => "OAuth2 is enabled but not fully configured, verify in the Settings -> Service Settings that you have OAuth2 connected and, importantly, a UID assigned to your current character.",
             ServerState.OAuthLoginTokenStale => "Your OAuth2 login token is stale and cannot be used to renew. Go to the Settings -> Service Settings and unlink then relink your OAuth2 configuration.",
             ServerState.NoAutoLogon => "This character has automatic login disabled for all servers. Press the connect button to connect to a server.",
+            ServerState.NoHubFound => "No Laci Hub API found, can not connect to the server. Consider customizing the server connection with an advanced URI.",
             _ => string.Empty
         };
     }
