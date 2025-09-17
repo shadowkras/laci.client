@@ -521,6 +521,11 @@ public class CompactUi : WindowMediatorSubscriberBase
                 UiSharedService.AttachToolTip("Click to copy");
             }
         }
+        else if(_apiController.IsServerConnecting(serverId))
+        {
+            UiSharedService.ColorTextWrapped("Connecting", ImGuiColors.DalamudYellow);
+            UiSharedService.AttachToolTip("The server is currently connecting. This may take a moment.");
+        }
         else if (_apiController.IsServerAlive(serverId))
         {
             var serverError = GetServerErrorByServer(serverId);
@@ -547,6 +552,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         using (ImRaii.PushColor(ImGuiCol.Text, color))
         {
+            using var disabled = ImRaii.Disabled(_apiController.IsServerConnecting(serverId));
             if (_uiSharedService.IconButton(connectedIcon, serverId.ToString()))
             {
                 if (_apiController.IsServerConnected(serverId))
@@ -920,7 +926,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             ServerState.OAuthMisconfigured => "OAuth2 is enabled but not fully configured, verify in the Settings -> Service Settings that you have OAuth2 connected and, importantly, a UID assigned to your current character.",
             ServerState.OAuthLoginTokenStale => "Your OAuth2 login token is stale and cannot be used to renew. Go to the Settings -> Service Settings and unlink then relink your OAuth2 configuration.",
             ServerState.NoAutoLogon => "This character has automatic login disabled for all servers. Press the connect button to connect to a server.",
-            ServerState.NoHubFound => "No Laci Hub API found, can not connect to the server. Consider customizing the server connection with an advanced URI.",
+            ServerState.NoHubFound => "Sync Hub not found. Please request the correct Hub URI from the person running the server you want to connect to.",
             _ => string.Empty
         };
     }

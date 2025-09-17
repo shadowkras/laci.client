@@ -133,6 +133,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         }
     }
 
+    public bool IsServerConnecting(ServerIndex index)
+    {
+        return GetServerStateForServer(index) == ServerState.Connecting;
+    }
+
     public int GetMaxGroupsJoinedByUser(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;

@@ -120,9 +120,20 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         {
             return;
         }
+        
+        // TODO: remove this temporary config migration stuff
+        // Attempt to find the hub URI by trying possible old/new hubs
+        _serverState = ServerState.Connecting;
+        var hubUri = await FindHubUrl().ConfigureAwait(false);
+        if (hubUri.IsNullOrEmpty())
+        {
+            await StopConnectionAsync(ServerState.NoHubFound).ConfigureAwait(false);
+            return;
+        }
 
         // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
-        await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
+        // Also set to "Connecting" at this point
+        await StopConnectionAsync(ServerState.Connecting).ConfigureAwait(false);
         Logger.LogInformation("Recreating Connection");
         Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Informational,
             $"Starting Connection to {ServerToUse.ServerName}")));
@@ -134,10 +145,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _connectionCancellationTokenSource = new CancellationTokenSource();
         var cancelReconnectToken = _connectionCancellationTokenSource.Token;
         // Loop and try to establish connections
-        await LoopConnections(cancelReconnectToken).ConfigureAwait(false);
+        await LoopConnections(hubUri, cancelReconnectToken).ConfigureAwait(false);
     }
 
-    private async Task LoopConnections(CancellationToken cancelReconnectToken)
+    private async Task LoopConnections(String hubUri, CancellationToken cancelReconnectToken)
     {
         while (_serverState is not ServerState.Connected && !cancelReconnectToken.IsCancellationRequested)
         {
@@ -147,7 +158,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
             try
             {
-                await TryConnect().ConfigureAwait(false);
+                await TryConnect(hubUri).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -188,7 +199,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    private async Task TryConnect()
+    private async Task TryConnect(string hubUri)
     {
         _connectionCancellationTokenSource?.Cancel();
         _connectionCancellationTokenSource?.Dispose();
@@ -205,14 +216,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        // TODO: remove this temporary config migration stuff
-        var hubUri = await FindHubUrl().ConfigureAwait(false);
-        if (hubUri.IsNullOrEmpty())
-        {
-            await StopConnectionAsync(ServerState.NoHubFound).ConfigureAwait(false);
-            return;
-        }
-      
         _connection = InitializeHubConnection(cancellationToken, hubUri);
         InitializeApiHooks();
 
@@ -233,7 +236,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         await LoadOnlinePairsAsync().ConfigureAwait(false);
     }
 
-    private async Task<string> FindHubUrl()
+    private async Task<string?> FindHubUrl()
     {
         var configuredHubUri = ServerToUse.ServerHubUri.Replace("wss://", "https://").Replace("ws://", "http://");
         var baseUri = ServerToUse.ServerUri.Replace("wss://", "https://").Replace("ws://", "http://");
@@ -262,7 +265,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
 
         Logger.LogWarning("Unable to find any hub to connect to, aborting connection attempt.");
-        return "";
+        return null;
     }
 
     private async Task UpdateToken(CancellationToken cancellationToken)
