@@ -25,6 +25,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private readonly ILoggerProvider _loggerProvider;
     private readonly MultiConnectTokenService _multiConnectTokenService;
     private readonly SyncConfigService _syncConfigService;
+    private readonly HttpClient _httpClient;
 
     /// <summary>
     /// In preparation for multi-connect, all the SignalR connection functionality
@@ -36,13 +37,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private readonly ConcurrentDictionary<ServerIndex, SyncHubClient> _syncClients = new();
 
     public ApiController(ILogger<ApiController> logger, ILoggerFactory loggerFactory, DalamudUtilService dalamudUtil, ILoggerProvider loggerProvider,
-        PairManager pairManager, ServerConfigurationManager serverConfigManager, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService) : base(logger, mediator)
+        PairManager pairManager, ServerConfigurationManager serverConfigManager, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) : base(logger, mediator)
     {
         _dalamudUtil = dalamudUtil;
         _pairManager = pairManager;
         _serverConfigManager = serverConfigManager;
         _multiConnectTokenService = multiConnectTokenService;
         _syncConfigService = syncConfigService;
+        _httpClient = httpClient;
         _loggerFactory = loggerFactory;
         _loggerProvider = loggerProvider;
 
@@ -131,6 +133,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         }
     }
 
+    public bool IsServerConnecting(ServerIndex index)
+    {
+        return GetServerStateForServer(index) == ServerState.Connecting;
+    }
+
     public int GetMaxGroupsJoinedByUser(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;
@@ -184,7 +191,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private SyncHubClient CreateNewClient(ServerIndex serverIndex)
     {
         return new SyncHubClient(serverIndex, _serverConfigManager, _pairManager, _dalamudUtil,
-            _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService, _syncConfigService);
+            _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService, _syncConfigService, _httpClient);
     }
 
     private SyncHubClient? GetClientForServer(ServerIndex serverIndex)
