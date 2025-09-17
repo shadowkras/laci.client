@@ -97,14 +97,19 @@ public class DrawUserPair
             UiSharedService.AttachToolTip("This reapplies the last received character data to this character");
         }
 
-        if (_uiSharedService.IconTextButton(FontAwesomeIcon.PlayCircle, "Cycle pause state", _menuWidth, true))
+        using (ImRaii.Disabled(!_pair.IsOnline))
         {
-            _ = _apiController.CyclePauseAsync(_pair.ServerIndex, _pair.UserData);
-            ImGui.CloseCurrentPopup();
+            if (_uiSharedService.IconTextButton(FontAwesomeIcon.PlayCircle, "Cycle pause state", _menuWidth, true))
+            {
+                _ = _apiController.CyclePauseAsync(_pair.ServerIndex, _pair.UserData);
+                ImGui.CloseCurrentPopup();
+            }
         }
-        ImGui.Separator();
+        UiSharedService.AttachToolTip("This pauses this character and unpauses again after a few seconds.");
+    }
 
-        ImGui.TextUnformatted("Pair Permission Functions");
+    private void DrawPairPermissionsMenu()
+    {
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.WindowMaximize, "Open Permissions Window", _menuWidth, true))
         {
             _mediator.Publish(new OpenPermissionWindow(_pair));
@@ -363,6 +368,9 @@ public class DrawUserPair
                 ImGui.Separator();
                 ImGui.TextUnformatted("Common Pair Functions");
                 DrawCommonClientMenu();
+                ImGui.Separator();
+                ImGui.TextUnformatted("Pair Permission Functions");
+                DrawPairPermissionsMenu();
                 ImGui.Separator();
                 DrawPairedClientMenu();
                 if (_menuWidth <= 0)
