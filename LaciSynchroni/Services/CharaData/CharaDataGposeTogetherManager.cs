@@ -93,7 +93,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            if (msg.ServerIndex == _dataServerIndex)
+            if (msg.ServerIndex == _dataServerIndex && CurrentGPoseLobbyServerId.HasValue)
             {
                 // Only clear if the server we are gposing on disconnected
                 ClearGposeLobbyState();
