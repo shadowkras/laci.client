@@ -83,31 +83,31 @@ public class ServerConfigurationManager
         var auth = currentServer.Authentications.FindAll(f => string.Equals(f.CharacterName, charaName) && f.WorldId == worldId);
         if (auth.Count >= 2)
         {
-            _logger.LogTrace("GetOAuth2 accessed, returning null because multiple ({count}) identical characters.", auth.Count);
+            _logger.LogTrace("GetOAuth2 accessed, returning null because multiple ({Count}) identical characters.", auth.Count);
             hasMulti = true;
             return null;
         }
 
         if (auth.Count == 0)
         {
-            _logger.LogTrace("GetOAuth2 accessed, returning null because no set up characters for {chara} on {world}", charaName, worldId);
+            _logger.LogTrace("GetOAuth2 accessed, returning null because no set up characters for {Chara} on {World}", charaName, worldId);
             return null;
         }
 
         if (auth.Single().LastSeenCID != cid)
         {
             auth.Single().LastSeenCID = cid;
-            _logger.LogTrace("GetOAuth2 accessed, updating CID for {chara} on {world} to {cid}", charaName, worldId, cid);
+            _logger.LogTrace("GetOAuth2 accessed, updating CID for {Chara} on {World} to {Cid}", charaName, worldId, cid);
             Save();
         }
 
         if (!string.IsNullOrEmpty(auth.Single().UID) && !string.IsNullOrEmpty(currentServer.OAuthToken))
         {
-            _logger.LogTrace("GetOAuth2 accessed, returning {key} ({keyValue}) for {chara} on {world}", auth.Single().UID, string.Join("", currentServer.OAuthToken.Take(10)), charaName, worldId);
+            _logger.LogTrace("GetOAuth2 accessed, returning {Key} ({KeyValue}) for {Chara} on {World}", auth.Single().UID, string.Join("", currentServer.OAuthToken.Take(10)), charaName, worldId);
             return (currentServer.OAuthToken, auth.Single().UID!);
         }
 
-        _logger.LogTrace("GetOAuth2 accessed, returning null because no UID found for {chara} on {world} or OAuthToken is not configured.", charaName, worldId);
+        _logger.LogTrace("GetOAuth2 accessed, returning null because no UID found for {Chara} on {World} or OAuthToken is not configured.", charaName, worldId);
 
         return null;
     }
@@ -136,31 +136,31 @@ public class ServerConfigurationManager
         var auth = currentServer.Authentications.FindAll(f => string.Equals(f.CharacterName, charaName, StringComparison.Ordinal) && f.WorldId == worldId);
         if (auth.Count >= 2)
         {
-            _logger.LogTrace("GetSecretKey accessed, returning null because multiple ({count}) identical characters.", auth.Count);
+            _logger.LogTrace("GetSecretKey accessed, returning null because multiple ({Count}) identical characters.", auth.Count);
             hasMulti = true;
             return null;
         }
 
         if (auth.Count == 0)
         {
-            _logger.LogTrace("GetSecretKey accessed, returning null because no set up characters for {chara} on {world}", charaName, worldId);
+            _logger.LogTrace("GetSecretKey accessed, returning null because no set up characters for {Chara} on {World}", charaName, worldId);
             return null;
         }
 
         if (auth.Single().LastSeenCID != cid)
         {
             auth.Single().LastSeenCID = cid;
-            _logger.LogTrace("GetSecretKey accessed, updating CID for {chara} on {world} to {cid}", charaName, worldId, cid);
+            _logger.LogTrace("GetSecretKey accessed, updating CID for {Chara} on {World} to {Cid}", charaName, worldId, cid);
             Save();
         }
 
         if (currentServer.SecretKeys.TryGetValue(auth.Single().SecretKeyIdx, out var secretKey))
         {
-            _logger.LogTrace("GetSecretKey accessed, returning {key} ({keyValue}) for {chara} on {world}", secretKey.FriendlyName, string.Join("", secretKey.Key.Take(10)), charaName, worldId);
+            _logger.LogTrace("GetSecretKey accessed, returning {Key} ({KeyValue}) for {Chara} on {World}", secretKey.FriendlyName, string.Join("", secretKey.Key.Take(10)), charaName, worldId);
             return secretKey.Key;
         }
 
-        _logger.LogTrace("GetSecretKey accessed, returning null because no fitting key found for {chara} on {world} for idx {idx}.", charaName, worldId, auth.Single().SecretKeyIdx);
+        _logger.LogTrace("GetSecretKey accessed, returning null because no fitting key found for {Chara} on {World} for idx {Idx}.", charaName, worldId, auth.Single().SecretKeyIdx);
 
         return null;
     }
@@ -174,7 +174,7 @@ public class ServerConfigurationManager
     {
         return GetServerByIndex(index).ServerName;
     }
-    
+
     public ServerStorage GetServerByIndex(int idx)
     {
         var storage = _serverConfigService.Current.ServerStorage;
@@ -231,7 +231,7 @@ public class ServerConfigurationManager
     public void Save()
     {
         var caller = new StackTrace().GetFrame(1)?.GetMethod()?.ReflectedType?.Name ?? "Unknown";
-        _logger.LogDebug("{caller} Calling config save", caller);
+        _logger.LogDebug("{Caller} Calling config save", caller);
         _serverConfigService.Save();
     }
 
