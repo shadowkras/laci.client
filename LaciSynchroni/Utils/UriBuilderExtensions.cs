@@ -5,6 +5,10 @@
     /// </summary>
     public static class UriBuilderExtensions
     {
+        /// <summary>
+        /// Convert ws/wss scheme to http/https.
+        /// </summary>
+        /// <returns></returns>
         public static UriBuilder WsToHttp(this UriBuilder uriBuilder)
         {
             if (string.Equals(uriBuilder.Scheme, Uri.UriSchemeWss, StringComparison.OrdinalIgnoreCase))
@@ -15,6 +19,10 @@
             return uriBuilder;
         }
 
+        /// <summary>
+        /// Convert http/https scheme to ws/wss.
+        /// </summary>
+        /// <returns></returns>
         public static UriBuilder HttpToWss(this UriBuilder uriBuilder)
         {
             if (string.Equals(uriBuilder.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
