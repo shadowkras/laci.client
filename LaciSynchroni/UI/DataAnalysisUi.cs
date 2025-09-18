@@ -536,7 +536,15 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
         ImGui.SameLine();
         ImGui.TextUnformatted(UiSharedService.ByteToString(_cachedAnalysis!.Sum(c => c.Value.Sum(c => c.Value.CompressedSize))));
         ImGui.TextUnformatted($"Total modded model triangles: {_cachedAnalysis.Sum(c => c.Value.Sum(f => f.Value.Triangles))}");
+        
+        var unconvertedTextures = _characterAnalyzer.UnconvertedTextureCount;
+        if (unconvertedTextures > 0)
+        {
+            UiSharedService.ColorTextWrapped($"You have {unconvertedTextures} total texture(s) that are not BC7 format. Consider converting them to BC7 to reduce their size.",
+                ImGuiColors.DalamudYellow);
+        }
         ImGui.Separator();
+        
         using var tabbar = ImRaii.TabBar("objectSelection");
         foreach (var kvp in _cachedAnalysis)
         {
@@ -612,10 +620,12 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
                     }
                 }
 
-                var unconvertedTextures = _characterAnalyzer.UnconvertedTextureCount;
-                if (unconvertedTextures > 0)
+                var nonBC7TexturesKeyCount = kvp.Value.Values
+                    .Count(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && !v.Format.Value.StartsWith("BC7", StringComparison.OrdinalIgnoreCase)); 
+
+                if (nonBC7TexturesKeyCount > 0)
                 {
-                    UiSharedService.ColorTextWrapped($"You have {unconvertedTextures} texture(s) that are not BC7 format. Consider converting them to BC7 to reduce their size.",
+                    UiSharedService.ColorTextWrapped($"{kvp.Key} has {nonBC7TexturesKeyCount} texture(s) that are not BC7 format. Consider converting them to BC7 to reduce their size.",
                         ImGuiColors.DalamudYellow);
                 }
 
