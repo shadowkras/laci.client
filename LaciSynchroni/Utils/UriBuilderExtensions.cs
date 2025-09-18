@@ -23,7 +23,7 @@
         /// Convert http/https scheme to ws/wss.
         /// </summary>
         /// <returns></returns>
-        public static UriBuilder HttpToWss(this UriBuilder uriBuilder)
+        public static UriBuilder HttpToWs(this UriBuilder uriBuilder)
         {
             if (string.Equals(uriBuilder.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
                 uriBuilder.Scheme = Uri.UriSchemeWss;
