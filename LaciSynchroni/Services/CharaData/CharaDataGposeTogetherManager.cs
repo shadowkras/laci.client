@@ -7,6 +7,7 @@ using LaciSynchroni.Interop;
 using LaciSynchroni.Interop.Ipc;
 using LaciSynchroni.Services.CharaData.Models;
 using LaciSynchroni.Services.Mediator;
+using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
@@ -157,7 +158,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     internal void CreateNewLobby(int serverIndex)
     {
         _dataServerIndex = serverIndex;
-        _ = Task.Run(async () =>
+        TaskHelpers.FireAndForget(async () =>
         {
             try
             {
@@ -174,12 +175,12 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
             {
                 Logger.LogError(ex, "Error creating new GPose Lobby");
             }
-        });
+        }, Logger);
     }
 
     internal void JoinGPoseLobby(int serverIndex, string joinLobbyId, bool isReconnecting = false)
     {
-        _ = Task.Run(async () =>
+        TaskHelpers.FireAndForget(async () =>
         {
             try
             {
@@ -217,12 +218,12 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
                     CurrentGPoseLobbyServerId = null;
                 }
             }
-        });
+        }, Logger);
     }
 
     internal void LeaveGPoseLobby(int serverIndex)
     {
-        _ = Task.Run(async () =>
+        TaskHelpers.FireAndForget(async () =>
         {
             try
             {
@@ -234,7 +235,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
             {
                 Logger.LogError(ex, "Error leaving GPose Lobby");
             }
-        });
+        }, Logger);
     }
 
     internal void ClearGposeLobbyState()
@@ -576,7 +577,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
                 kvp.Value.HasPoseDataUpdate = false;
                 kvp.Value.HasWorldDataUpdate = false;
 
-                _ = Task.Run(async () =>
+                TaskHelpers.FireAndForget(async () =>
                 {
                     if (hadPoseDataUpdate && kvp.Value.ApplicablePoseData != null)
                     {
@@ -586,7 +587,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
                     {
                         await _brio.ApplyTransformAsync(kvp.Value.Address, kvp.Value.WorldData.Value).ConfigureAwait(false);
                     }
-                });
+                }, Logger);
             }
         }
     }
