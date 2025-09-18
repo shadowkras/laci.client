@@ -11,6 +11,7 @@ using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.SyncConfiguration.Models;
+using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI.SignalR;
 using LaciSynchroni.WebAPI.SignalR.Utils;
 using MessagePack;
@@ -31,9 +32,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     public readonly int ServerIndex;
 
     private readonly bool _isWine;
-
     private readonly ILogger _logger;
-    // For testing if we can connect to the hub
+
+    /// <summary>
+    /// For testing if we can connect to the hub
+    /// </summary>
     private readonly HttpClient _httpClient;
     private readonly ILoggerProvider _loggerProvider;
     private readonly MultiConnectTokenService _multiConnectTokenService;
@@ -45,37 +48,72 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     // Potentially, we can move _server out of this class and always use _serverConfigurationManager.
     private readonly ServerConfigurationManager _serverConfigurationManager;
 
+    private readonly Random _random = new Random();
 
-    // SignalR hub connection, one is maintained per server
+    /// <summary>
+    /// SignalR hub connection, one is maintained per server
+    /// </summary>
     private HubConnection? _connection;
     private bool _isDisposed = false;
     private bool _initialized;
     private bool _naggedAboutLod = false;
-    public ServerState _serverState { get; private set; }
+
+    /// <summary>
+    /// Current state of the server connection
+    /// </summary>
+    public ServerState ServerState { get; private set; }
     private CancellationTokenSource? _healthCheckTokenSource = new();
     private CancellationTokenSource? _connectionCancellationTokenSource;
     private bool _doNotNotifyOnNextInfo = false;
+
+    /// <summary>
+    /// If set, contains the last authentication failure message from the server
+    /// </summary>
     public string AuthFailureMessage { get; private set; } = string.Empty;
     private string? _lastUsedToken;
     private CensusUpdateMessage? _lastCensus;
+    private const int _baseReconnectSeconds = 5;
+    private const int _maxReconnectBackoff = 60;
+    private const double _jitterReconnectFactor = 0.2;
 
+    /// <summary>
+    /// Connection info from the server, if connected
+    /// </summary>
     public ConnectionDto? ConnectionDto { get; private set; }
+
+    /// <summary>
+    /// System info from the server, if connected
+    /// </summary>
     public SystemInfoDto? SystemInfoDto { get; private set; }
 
-    protected bool IsConnected => _serverState == ServerState.Connected;
-    public string UID => ConnectionDto?.User.UID ?? string.Empty;
+    /// <summary>
+    /// UID of the connected user, or empty string if not connected
+    /// </summary>
+    public string UID => ConnectionDto?.User?.UID ?? string.Empty;
 
+    /// <summary>
+    /// True if we are connected to the server
+    /// </summary>
+    protected bool IsConnected => ServerState == ServerState.Connected;
+
+    /// <summary>
+    /// The server configuration we are using
+    /// </summary>
     private ServerStorage ServerToUse => _serverConfigurationManager.GetServerByIndex(ServerIndex);
+    
+    /// <summary>
+    /// Name of the server we are connected to, or "Unknown service" if not connected
+    /// </summary>
+    private readonly string _serverName;
 
     public SyncHubClient(int serverIndex,
         ServerConfigurationManager serverConfigurationManager, PairManager pairManager,
         DalamudUtilService dalamudUtilService,
-        ILoggerFactory loggerFactory, ILoggerProvider loggerProvider, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) : base(
-        loggerFactory.CreateLogger(nameof(SyncHubClient) + serverIndex + "Mediator"), mediator)
+        ILoggerFactory loggerFactory, ILoggerProvider loggerProvider, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) :
+        base(loggerFactory.CreateLogger($"{nameof(SyncHubClient)}Mediator-{serverIndex}"), mediator)
     {
         ServerIndex = serverIndex;
         _isWine = dalamudUtilService.IsWine;
-        _logger = loggerFactory.CreateLogger(nameof(SyncHubClient) + serverIndex);
         _loggerProvider = loggerProvider;
         _multiConnectTokenService = multiConnectTokenService;
         _syncConfigService = syncConfigService;
@@ -83,20 +121,46 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _pairManager = pairManager;
         _dalamudUtil = dalamudUtilService;
         _serverConfigurationManager = serverConfigurationManager;
+        _serverName = ServerToUse?.ServerName ?? "Unknown service";
+        _logger = loggerFactory.CreateLogger($"{nameof(SyncHubClient)}-{_serverName}");
 
         Mediator.Subscribe<DalamudLoginMessage>(this, msg =>
         {
-            _ = Task.Run(DalamudUtilOnLogIn);
+            using var cts = new CancellationTokenSource();
+            TaskHelpers.FireAndForget(async () =>
+            {
+                var charaName = await _dalamudUtil.GetPlayerNameAsync().ConfigureAwait(false);
+                var worldId = await _dalamudUtil.GetHomeWorldIdAsync().ConfigureAwait(false);
+                await DalamudUtilOnLogIn(charaName, worldId).ConfigureAwait(false);
+            }, Logger, cts.Token);
         });
         Mediator.Subscribe<DalamudLogoutMessage>(this, (_) => DalamudUtilOnLogOut());
-        Mediator.Subscribe<CyclePauseMessage>(this, (msg) => _ = CyclePauseAsync(msg.ServerIndex, msg.UserData));
+        Mediator.Subscribe<CyclePauseMessage>(this, (msg) =>
+        {
+            Logger.LogTrace("Received CyclePauseMessage for server {ServerIndex}, this is {ThisServerIndex}", msg.ServerIndex, serverIndex);
+            if (serverIndex == msg.ServerIndex)
+                _ = CyclePauseAsync(msg.ServerIndex, msg.UserData);
+        });
         Mediator.Subscribe<CensusUpdateMessage>(this, (msg) => _lastCensus = msg);
-        Mediator.Subscribe<PauseMessage>(this, (msg) => _ = PauseAsync(msg.ServerIndex, msg.UserData));
+        Mediator.Subscribe<PauseMessage>(this, (msg) =>
+        {
+            if (serverIndex == msg.ServerIndex)
+                _ = PauseAsync(msg.ServerIndex, msg.UserData);
+        });
     }
 
-
+    /// <summary>
+    /// Create connections to the server, if not paused or in error state
+    /// </summary>
+    /// <returns></returns>
     public async Task CreateConnectionsAsync()
     {
+        if (ServerToUse is null)
+        {
+            //Server info was deleted from the configs or the config was deleted.
+            return;
+        }
+
         if (!await VerifyCensus().ConfigureAwait(false))
         {
             return;
@@ -120,94 +184,167 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         {
             return;
         }
-        
-        // TODO: remove this temporary config migration stuff
-        // Attempt to find the hub URI by trying possible old/new hubs
-        _serverState = ServerState.Connecting;
-        var hubUri = await FindHubUrl().ConfigureAwait(false);
-        if (hubUri.IsNullOrEmpty())
+
+        if(IsConnected)
+        {
+            // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
+            // Also set to "Connecting" at this point
+            Logger.LogInformation("Already connected to {ServerName}, stopping connection", _serverName);
+            await StopConnectionAsync(ServerState.Connecting).ConfigureAwait(false);
+        }
+
+        var serverHubUri = await FindServerHubUrl().ConfigureAwait(false);
+        if (string.IsNullOrEmpty(serverHubUri?.AbsoluteUri))
         {
             await StopConnectionAsync(ServerState.NoHubFound).ConfigureAwait(false);
             return;
         }
 
-        // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
-        // Also set to "Connecting" at this point
-        await StopConnectionAsync(ServerState.Connecting).ConfigureAwait(false);
-        Logger.LogInformation("Recreating Connection");
-        Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Informational,
-            $"Starting Connection to {ServerToUse.ServerName}")));
+        Logger.LogInformation("Recreating Connection to {ServerName}", _serverName);
+        Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Informational,
+            $"Starting Connection to {_serverName}")));
 
         // If we have an old token, we clear it out so old tokens won't accidentally cancel the fresh connect attempt
         // This will also cancel out all ongoing connection attempts for this server, if any are still pending
-        _connectionCancellationTokenSource?.Cancel();
-        _connectionCancellationTokenSource?.Dispose();
-        _connectionCancellationTokenSource = new CancellationTokenSource();
-        var cancelReconnectToken = _connectionCancellationTokenSource.Token;
+        var connectionCancellationToken = CreateConnectToken();
+
         // Loop and try to establish connections
-        await LoopConnections(hubUri, cancelReconnectToken).ConfigureAwait(false);
+        await LoopConnections(serverHubUri, connectionCancellationToken).ConfigureAwait(false);
     }
 
-    private async Task LoopConnections(String hubUri, CancellationToken cancelReconnectToken)
+    private async Task LoopConnections(Uri serverHubUri, CancellationToken connectionCancellationToken)
     {
-        while (_serverState is not ServerState.Connected && !cancelReconnectToken.IsCancellationRequested)
-        {
-            AuthFailureMessage = string.Empty;
-            await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
-            _serverState = ServerState.Connecting;
+        int backoffSeconds = _baseReconnectSeconds;
 
+        while (ServerToUse is not null &&
+               ServerState is not ServerState.Connected &&
+               !connectionCancellationToken.IsCancellationRequested)
+        {
             try
             {
-                await TryConnect(hubUri).ConfigureAwait(false);
+                if (connectionCancellationToken.IsCancellationRequested)
+                    return;
+
+                await TryConnect(serverHubUri, connectionCancellationToken).ConfigureAwait(false);
+                AuthFailureMessage = string.Empty;
+                backoffSeconds = _baseReconnectSeconds;
+                return;
             }
             catch (OperationCanceledException)
             {
                 // cancellation token was triggered, either through user input or an error
                 // if this is the case, we just log it and leave. Connection wasn't established set, nothing to erase
-                _logger.LogWarning("Connection attempt cancelled");
+                _logger.LogWarning("Connection to {ServerName} attempt cancelled", _serverName);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                Logger.LogWarning(ex, "InvalidOperationException on connection to {ServerName}", _serverName);
+                await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
                 return;
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogWarning(ex, "HttpRequestException on Connection");
+                var statusCode = ex.StatusCode ?? HttpStatusCode.ServiceUnavailable;
+                _logger.LogWarning(ex, "HttpRequestException on connection to {ServerName} ({ServerHubUri}) (StatusCode {StatusCode}) ",
+                    _serverName, serverHubUri, statusCode);
 
-                if (ex.StatusCode == HttpStatusCode.Unauthorized)
+                if (ex.StatusCode is HttpStatusCode.Unauthorized)
                 {
                     // we don't want to spam our auth server. Raze down the connection and leave
                     await StopConnectionAsync(ServerState.Unauthorized).ConfigureAwait(false);
                     return;
                 }
 
-                _serverState = ServerState.Reconnecting;
-                _logger.LogInformation("Failed to establish connection, retrying");
-                await Task.Delay(TimeSpan.FromSeconds(new Random().Next(5, 20)), cancelReconnectToken)
-                    .ConfigureAwait(false);
-            }
-            catch (InvalidOperationException ex)
-            {
-                Logger.LogWarning(ex, "InvalidOperationException on connection");
-                await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
-                return;
+                ServerState = ServerState.Reconnecting;
+                backoffSeconds = await HandleReconnectDelay(ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Exception on Connection");
-                Logger.LogInformation("Failed to establish connection, retrying");
-                await Task.Delay(TimeSpan.FromSeconds(new Random().Next(5, 20)), cancelReconnectToken)
-                    .ConfigureAwait(false);
+                Logger.LogWarning(ex, "Exception on connection to {ServerName} ({ServerHubUri})", _serverName, ServerToUse.ServerHubUri);
+                backoffSeconds = await HandleReconnectDelay(LogLevel.Critical, ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);
             }
         }
+
+        if (connectionCancellationToken.IsCancellationRequested)
+            Logger.LogInformation("Reconnect loop to {ServerName} exited due to cancellation token.", _serverName);
     }
 
-    private async Task TryConnect(string hubUri)
+    /// <summary>
+    /// Create a new cancellation token for connection attempts, cancelling any previous ones.
+    /// </summary>
+    /// <returns></returns>
+    private CancellationToken CreateConnectToken()
     {
         _connectionCancellationTokenSource?.Cancel();
         _connectionCancellationTokenSource?.Dispose();
         _connectionCancellationTokenSource = new CancellationTokenSource();
-        var cancellationToken = _connectionCancellationTokenSource.Token;
+        var cancelReconnectToken = _connectionCancellationTokenSource.Token;
+        return cancelReconnectToken;
+    }
+
+    /// <summary>
+    /// Handle a reconnect delay with jitter and backoff, logging at the specified loglevel
+    /// </summary>
+    /// <returns></returns>
+    private async Task<int> HandleReconnectDelay(string reason, int backoffSeconds, CancellationToken cancelToken)
+    {
+        return await HandleReconnectDelay(LogLevel.Information, reason, backoffSeconds, cancelToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Handle a reconnect delay with jitter and backoff, logging at the specified loglevel
+    /// </summary>
+    /// <returns></returns>
+    private async Task<int> HandleReconnectDelay(LogLevel loglevel, string reason, int backoffSeconds, CancellationToken cancelToken)
+    {
+        double delay = GetRandomReconnectDelay(backoffSeconds);
+        Logger.Log(loglevel, "Connection to {ServerName} failed ({Reason}), retrying in {Delay} seconds", _serverName, reason, (int)delay);
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(delay), cancelToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // cancellation by token, exit silently
+            return backoffSeconds;
+        }
+
+        return GetIncreasedReconnectBackoff(backoffSeconds);
+    }
+
+    /// <summary>
+    /// Get a random delay in seconds for reconnect, with jitter, maxed at maxReconnectBackoff
+    /// </summary>
+    /// <param name="backoffSeconds"></param>
+    /// <returns></returns>
+    private double GetRandomReconnectDelay(int backoffSeconds)
+    {
+        double jitter = (_random.NextDouble() * 2 - 1) * _jitterReconnectFactor;
+        double delay = backoffSeconds * (1.0 + jitter);
+        return Math.Min(delay, _maxReconnectBackoff);
+    }
+
+    /// <summary>
+    /// Double backoff for next attempt, maxed at maxReconnectBackoff.
+    /// </summary>
+    /// <param name="backoffSeconds"></param>
+    /// <returns></returns>
+    private static int GetIncreasedReconnectBackoff(int backoffSeconds)
+    {
+        return Math.Min(backoffSeconds * 2, _maxReconnectBackoff);
+    }
+
+    /// <summary>
+    /// Try to connect to the server hub, throwing exceptions on failure
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="HttpRequestException"></exception>
+    private async Task TryConnect(Uri serverHubUri, CancellationToken cancellationToken)
+    {
         AuthFailureMessage = string.Empty;
         await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
-        _serverState = ServerState.Connecting;
+        ServerState = ServerState.Connecting;
 
         await UpdateToken(cancellationToken).ConfigureAwait(false);
 
@@ -216,7 +353,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        _connection = InitializeHubConnection(cancellationToken, hubUri);
+        _connection = InitializeHubConnection(serverHubUri, cancellationToken);
         InitializeApiHooks();
 
         await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -225,49 +362,67 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
         {
             await StopConnectionAsync(ServerState.VersionMisMatch).ConfigureAwait(false);
-            return;
+            throw new HttpRequestException($"Client version mismatch with service{_serverName}: Server {ConnectionDto.ServerVersion}", null, HttpStatusCode.BadRequest);
         }
         // Also trigger some warnings
         TriggerConnectionWarnings(ConnectionDto);
 
-        _serverState = ServerState.Connected;
+        ServerState = ServerState.Connected;
+        _logger.LogInformation("Connection to {ServerName} successful.", _serverName);
 
-        await LoadIninitialPairsAsync().ConfigureAwait(false);
+        await LoadInitialPairsAsync().ConfigureAwait(false);
         await LoadOnlinePairsAsync().ConfigureAwait(false);
     }
 
-    private async Task<string?> FindHubUrl()
+    /// <summary>
+    /// Attempts to discover the server hub uri by attempting to handshake with known hub paths
+    /// </summary>
+    /// <returns></returns>
+    private async Task<Uri?> FindServerHubUrl()
     {
-        var configuredHubUri = ServerToUse.ServerHubUri.Replace("wss://", "https://").Replace("ws://", "http://");
-        var baseUri = ServerToUse.ServerUri.Replace("wss://", "https://").Replace("ws://", "http://");
-        if (!baseUri.EndsWith("/", StringComparison.Ordinal))
+        ServerState = ServerState.Connecting;
+
+        var hubsToCheck = new List<Uri>();
+
+        // Add advanced hub uri if available
+        if (ServerToUse.UseAdvancedUris && !string.IsNullOrEmpty(ServerToUse.ServerHubUri))
         {
-            baseUri += "/";
-        }
-        
-        // Essentially, we try every hub we are aware of plus the configured hub to see if we can find a connection
-        var hubsToCheck = new[] { configuredHubUri, baseUri + IServerHub.Path, baseUri + "/mare" };
-        foreach (var hubToCheck in hubsToCheck)
-        {
-            if (hubToCheck.IsNullOrEmpty())
-            {
-                continue;
-            }
-            var resHub = await _httpClient.GetAsync(hubToCheck).ConfigureAwait(false);
-            // If we get a 401, 200 or 204 we have found a hub. The last two should not happen, 401 means that the URL is valid and likely a hub connection
-            // We could try to emulate the /negotiate, but for now, this should work just as well
-            if (resHub.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.OK or HttpStatusCode.NoContent)
-            {
-                Logger.LogInformation("{HubUri}: Valid hub, using", hubToCheck);
-                return hubToCheck;
-            }
-            Logger.LogWarning("{HubUri}: Not valid, attempting next hub", hubToCheck);
+            var configuredHubUri = new UriBuilder(ServerToUse.ServerHubUri).WsToHttp().Uri;
+            hubsToCheck.Add(configuredHubUri);
         }
 
-        Logger.LogWarning("Unable to find any hub to connect to, aborting connection attempt.");
+        var baseServerUri = new UriBuilder(ServerToUse.ServerUri).WsToHttp().Uri;
+
+        hubsToCheck.Add(new Uri(baseServerUri, IServerHub.Path)); // Default hub path
+        hubsToCheck.Add(new Uri(baseServerUri, "/mare")); // falloff hub path for compatibility
+
+        foreach (var hubToCheck in hubsToCheck.Distinct())
+        {
+            if (string.IsNullOrEmpty(hubToCheck.AbsoluteUri))
+                continue;
+
+            var responseHub = await _httpClient.GetAsync(hubToCheck).ConfigureAwait(false);
+
+            // If we get a 401, 200 or 204 we have found a hub. The last two should not happen, 401 means that the URL is valid and likely a hub connection
+            // We could try to emulate the /negotiate, but for now, this should work just as well
+            if (responseHub.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.OK or HttpStatusCode.NoContent)
+            {
+                Logger.LogInformation("{HubUri}: Valid hub address found for {ServerName}", hubToCheck, _serverName);
+                return hubToCheck;
+            }
+
+            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}", hubToCheck, _serverName);
+        }
+
+        Logger.LogWarning("Unable to find any hub to connect to {ServerName}, aborting connection attempt.", _serverName);
         return null;
     }
 
+    /// <summary>
+    /// Update the token used for connection, throwing HttpRequestException on failure
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="HttpRequestException"></exception>
     private async Task UpdateToken(CancellationToken cancellationToken)
     {
         try
@@ -277,20 +432,23 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         catch (SyncAuthFailureException ex)
         {
             AuthFailureMessage = ex.Reason;
-            throw new HttpRequestException("Error during authentication", ex, HttpStatusCode.Unauthorized);
+            throw new HttpRequestException($"Error during authentication to {_serverName}", ex, HttpStatusCode.Unauthorized);
         }
     }
 
+    /// <summary>
+    /// Stop and dispose the current connection, setting the server state to the specified state
+    /// </summary>
+    /// <returns></returns>
     private async Task StopConnectionAsync(ServerState state)
     {
-        _serverState = ServerState.Disconnecting;
+        ServerState = ServerState.Disconnecting;
 
-        _logger.LogInformation("Stopping existing connection");
+        _logger.LogInformation("Stopping existing connection to {ServerName}", _serverName);
 
         if (_connection != null && !_isDisposed)
         {
-            _logger.LogDebug("Disposing current HubConnection");
-            _isDisposed = true;
+            _logger.LogDebug("Disposing current HubConnection to {ServerName}", _serverName);
 
             _connection.Closed -= ConnectionOnClosed;
             _connection.Reconnecting -= ConnectionOnReconnecting;
@@ -299,42 +457,27 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             await _connection.StopAsync().ConfigureAwait(false);
             await _connection.DisposeAsync().ConfigureAwait(false);
 
-            Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Informational,
-                $"Stopping existing connection to {ServerToUse.ServerName}")));
+            _isDisposed = true;
+
+            Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Informational,
+                $"Stopping existing connection to {_serverName}")));
             _initialized = false;
             _healthCheckTokenSource?.Cancel();
             Mediator.Publish(new DisconnectedMessage(ServerIndex));
             _connection = null;
             ConnectionDto = null;
 
-            _connection = null;
-
-            Logger.LogDebug("Current HubConnection disposed");
+            Logger.LogDebug("HubConnection to {ServerName} disposed", _serverName);
         }
 
-        _serverState = state;
+        ServerState = state;
     }
 
-    private async Task DisposeHubAsync()
-    {
-        if (_connection == null || _isDisposed) return;
-
-        _logger.LogDebug("Disposing current HubConnection");
-        _isDisposed = true;
-
-        _connection.Closed -= ConnectionOnClosed;
-        _connection.Reconnecting -= ConnectionOnReconnecting;
-        _connection.Reconnected -= ConnectionOnReconnectedAsync;
-
-        await _connection.StopAsync().ConfigureAwait(false);
-        await _connection.DisposeAsync().ConfigureAwait(false);
-
-        _connection = null;
-
-        Logger.LogDebug("Current HubConnection disposed");
-    }
-
-    private HubConnection InitializeHubConnection(CancellationToken ct, string hubUrl)
+    /// <summary>
+    /// Initialize a new HubConnection to the specified server hub uri
+    /// </summary>
+    /// <returns></returns>
+    private HubConnection InitializeHubConnection(Uri serverHubUri, CancellationToken ct)
     {
         var transportType = ServerToUse.HttpTransportType switch
         {
@@ -354,10 +497,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             transportType = HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling;
         }
 
-        _logger.LogDebug("Building new HubConnection using transport {Transport}", transportType);
+        _logger.LogDebug("Building new HubConnection to {ServerName} ({ServerHubUrl}) using transport {Transport}", _serverName, serverHubUri, transportType);
 
         _connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl, options =>
+            .WithUrl(serverHubUri, options =>
             {
                 options.AccessTokenProvider = () => _multiConnectTokenService.GetOrUpdateToken(ServerIndex, ct);
                 options.Transports = transportType;
@@ -397,26 +540,34 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return _connection;
     }
 
+    /// <summary>
+    /// Handle connection closed event
+    /// </summary>
+    /// <returns></returns>
     private Task ConnectionOnClosed(Exception? arg)
     {
         _healthCheckTokenSource?.Cancel();
         Mediator.Publish(new DisconnectedMessage(ServerIndex));
-        _serverState = ServerState.Offline;
+        ServerState = ServerState.Offline;
         if (arg != null)
         {
-            _logger.LogWarning(arg, "Connection closed");
+            _logger.LogWarning(arg, "Connection to {ServerName} closed", _serverName);
         }
         else
         {
-            _logger.LogInformation("Connection closed");
+            _logger.LogInformation("Connection to {ServerName} closed", _serverName);
         }
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Handle connection reconnected event
+    /// </summary>
+    /// <returns></returns>
     private async Task ConnectionOnReconnectedAsync(string? arg)
     {
-        _serverState = ServerState.Reconnecting;
+        ServerState = ServerState.Reconnecting;
         try
         {
             InitializeApiHooks();
@@ -427,39 +578,58 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 return;
             }
 
-            _serverState = ServerState.Connected;
-            await LoadIninitialPairsAsync().ConfigureAwait(false);
+            ServerState = ServerState.Connected;
+            await LoadInitialPairsAsync().ConfigureAwait(false);
             await LoadOnlinePairsAsync().ConfigureAwait(false);
             Mediator.Publish(new ConnectedMessage(ConnectionDto, ServerIndex));
         }
         catch (Exception ex)
         {
-            Logger.LogCritical(ex, "Failure to obtain data after reconnection");
+            Logger.LogCritical(ex, "Failure to obtain data from {ServerName} after reconnection", _serverName);
             await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    /// Handle connection reconnecting event
+    /// </summary>
+    /// <returns></returns>
     private Task ConnectionOnReconnecting(Exception? arg)
     {
         _doNotNotifyOnNextInfo = true;
         _healthCheckTokenSource?.Cancel();
-        _serverState = ServerState.Reconnecting;
-        Logger.LogWarning(arg, "Connection closed... Reconnecting");
-        Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Warning,
-            $"Connection interrupted, reconnecting to {ServerToUse.ServerName}")));
+        ServerState = ServerState.Reconnecting;
+        Logger.LogWarning(arg, "Connection to {ServerName} closed... Reconnecting", _serverName);
+        Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Warning,
+            $"Connection interrupted, reconnecting to {_serverName}")));
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Get the current connection dto, throwing if not connected
+    /// </summary>
+    /// <returns></returns>
     public Task<ConnectionDto> GetConnectionDto() => GetConnectionDtoAsync(true);
 
+    /// <summary>
+    /// Get the current connection dto, throwing if not connected
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException"></exception>
     public async Task<ConnectionDto> GetConnectionDtoAsync(bool publishConnected)
     {
+        if (_connection is null)
+            throw new InvalidOperationException($"Not connected to server {_serverName}");
+
         var dto = await _connection!.InvokeAsync<ConnectionDto>(nameof(GetConnectionDto)).ConfigureAwait(false);
-        if (publishConnected) Mediator.Publish(new ConnectedMessage(dto, ServerIndex));
+        if (publishConnected)
+            Mediator.Publish(new ConnectedMessage(dto, ServerIndex));
         return dto;
     }
 
-
+    /// <summary>
+    /// Initialize all the API hooks for SignalR calls
+    /// </summary>
     private void InitializeApiHooks()
     {
         if (_connection == null) return;
@@ -496,29 +666,69 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         OnGposeLobbyPushPoseData((dto, data) => _ = Client_GposeLobbyPushPoseData(dto, data));
         OnGposeLobbyPushWorldData((dto, data) => _ = Client_GposeLobbyPushWorldData(dto, data));
 
-        _healthCheckTokenSource?.Cancel();
-        _healthCheckTokenSource?.Dispose();
-        _healthCheckTokenSource = new CancellationTokenSource();
-        _ = ClientHealthCheckAsync(_healthCheckTokenSource.Token);
+        _ = ClientHealthCheckAsync();
 
         _initialized = true;
     }
 
-    private async Task ClientHealthCheckAsync(CancellationToken ct)
+    /// <summary>
+    /// Periodically check the client health, reconnecting if necessary
+    /// </summary>
+    /// <returns></returns>
+    private async Task ClientHealthCheckAsync()
     {
-        while (!ct.IsCancellationRequested && _connection != null)
+        using var cts = CreateHealthCheckToken();
+
+        while (!cts.IsCancellationRequested && _connection != null)
         {
-            await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-            Logger.LogDebug("Checking Client Health State");
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30), cts.Token).ConfigureAwait(false);
+                Logger.LogDebug("Checking Client Health State to {ServerName}", _serverName);
 
-            bool requireReconnect = await RefreshTokenAsync(ct).ConfigureAwait(false);
+                bool requireReconnect = await RefreshTokenAsync(cts.Token).ConfigureAwait(false);
+                if (requireReconnect)
+                    break;
 
-            if (requireReconnect) break;
-
-            _ = await CheckClientHealth().ConfigureAwait(false);
+                _ = await CheckClientHealth().ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // cancellation by token, exit silently
+                break;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
+            }
         }
     }
 
+    /// <summary>
+    /// Create a new cancellation token for health checks, cancelling any previous ones.
+    /// </summary>
+    /// <returns></returns>
+    private CancellationTokenSource CreateHealthCheckToken()
+    {
+        var cts = new CancellationTokenSource();
+        try
+        {
+            _healthCheckTokenSource?.Cancel();
+            _healthCheckTokenSource?.Dispose();
+            _healthCheckTokenSource = cts;
+        }
+        catch (OperationCanceledException) 
+        {
+            //Ignore silently, we just wanted to cancel the old one
+        }
+
+        return cts;
+    }
+
+    /// <summary>
+    /// Refresh the token, reconnecting if it has changed
+    /// </summary>
+    /// <returns></returns>
     private async Task<bool> RefreshTokenAsync(CancellationToken ct)
     {
         bool requireReconnect = false;
@@ -527,7 +737,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             var token = await _multiConnectTokenService.GetOrUpdateToken(ServerIndex, ct).ConfigureAwait(false);
             if (!string.Equals(token, _lastUsedToken, StringComparison.Ordinal))
             {
-                Logger.LogDebug("Reconnecting due to updated token");
+                Logger.LogDebug("Reconnecting to {ServerName} due to updated token", _serverName);
 
                 _doNotNotifyOnNextInfo = true;
                 await CreateConnectionsAsync().ConfigureAwait(false);
@@ -542,7 +752,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Could not refresh token, forcing reconnect");
+            Logger.LogWarning(ex, "Could not refresh token from {ServerName}, forcing reconnect", _serverName);
             _doNotNotifyOnNextInfo = true;
             await CreateConnectionsAsync().ConfigureAwait(false);
             requireReconnect = true;
@@ -551,21 +761,29 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return requireReconnect;
     }
 
-    private async Task LoadIninitialPairsAsync()
+    /// <summary>
+    /// Load all initial pairs and groups from the server
+    /// </summary>
+    /// <returns></returns>
+    private async Task LoadInitialPairsAsync()
     {
         foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
         {
-            Logger.LogDebug("Group: {entry}", entry);
+            Logger.LogDebug("Group: {Entry}", entry);
             _pairManager.AddGroup(entry, ServerIndex);
         }
 
         foreach (var userPair in await UserGetPairedClients().ConfigureAwait(false))
         {
-            Logger.LogDebug("Individual Pair: {userPair}", userPair);
+            Logger.LogDebug("Individual Pair: {UserPair}", userPair);
             _pairManager.AddUserPair(userPair, ServerIndex);
         }
     }
 
+    /// <summary>
+    /// Load all currently online pairs from the server
+    /// </summary>
+    /// <returns></returns>
     private async Task LoadOnlinePairsAsync()
     {
         CensusDataDto? dto = null;
@@ -573,86 +791,146 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         {
             var world = await _dalamudUtil.GetWorldIdAsync().ConfigureAwait(false);
             dto = new((ushort)world, _lastCensus.RaceId, _lastCensus.TribeId, _lastCensus.Gender);
-            Logger.LogDebug("Attaching Census Data: {data}", dto);
+            Logger.LogDebug("Attaching Census Data: {Dto}", dto);
         }
 
         foreach (var entry in await UserGetOnlinePairs(dto).ConfigureAwait(false))
         {
-            Logger.LogDebug("Pair online: {pair}", entry);
+            Logger.LogDebug("Pair online: {Entry}", entry);
             _pairManager.MarkPairOnline(entry, ServerIndex, sendNotif: false);
         }
     }
 
-    public async Task DisposeAsync()
+    /// <summary>
+    /// Dispose the current connection, stopping it first
+    /// </summary>
+    /// <returns></returns>
+    public async Task DisposeConnectionAsync()
     {
-        _healthCheckTokenSource?.Cancel();
-        await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
-        _connectionCancellationTokenSource?.Cancel();
+        try
+        {
+            _connectionCancellationTokenSource?.Cancel();
+            _connectionCancellationTokenSource?.Dispose();
+            await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Silently ignore, we just wanted to cancel the token
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Error stopping connection to {ServerName}.", _serverName);
+        }
     }
 
+    /// <summary>
+    /// Dispose the current connection, stopping it first
+    /// </summary>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        _ = Task.Run(async () => await DisposeAsync().ConfigureAwait(false));
+        _ = Task.Run(async () => await DisposeConnectionAsync().ConfigureAwait(false));
     }
 
+    /// <summary>
+    /// Check the client health by invoking the server method
+    /// </summary>
+    /// <returns></returns>
     public async Task<bool> CheckClientHealth()
     {
-        return await _connection!.InvokeAsync<bool>(nameof(CheckClientHealth)).ConfigureAwait(false);
+        if (_connection is null)
+            return false;
+
+        return await _connection.InvokeAsync<bool>(nameof(CheckClientHealth)).ConfigureAwait(false);
     }
 
-    public async Task DalamudUtilOnLogIn()
+    /// <summary>
+    /// Handle dalamud login event, logging in if auto login is enabled for any servers.
+    /// </summary>
+    /// <returns></returns>
+    public async Task DalamudUtilOnLogIn(string characterName, uint worldId)
     {
-        var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
-        var worldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult();
-        var auth = ServerToUse.Authentications.Find(f =>
-            string.Equals(f.CharacterName, charaName, StringComparison.Ordinal) && f.WorldId == worldId);
+        var auth = ServerToUse?.Authentications?
+            .Find(f => string.Equals(f.CharacterName, characterName, StringComparison.Ordinal) && f.WorldId == worldId);
         if (auth?.AutoLogin ?? false)
         {
-            Logger.LogInformation("Logging into {chara}", charaName);
+            Logger.LogInformation("Logging into {ServerName} as {CharaName}", _serverName, characterName);
             await CreateConnectionsAsync().ConfigureAwait(false);
         }
         else
         {
-            Logger.LogInformation("Not logging into {chara}, auto login disabled", charaName);
+            Logger.LogInformation("Could not login into {ServerName} as {CharaName}, auto login is disabled", _serverName, characterName);
             await StopConnectionAsync(ServerState.NoAutoLogon).ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    /// Handle dalamud logout event
+    /// </summary>
     private void DalamudUtilOnLogOut()
     {
-        _ = Task.Run(async () => await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false));
-        _serverState = ServerState.Offline;
+        StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false).GetAwaiter().GetResult();
+        ServerState = ServerState.Offline;
     }
 
+    /// <summary>
+    /// Cycle pause for the specified user, pausing and unpausing them with a short delay
+    /// </summary>
+    /// <returns></returns>
     public Task CyclePauseAsync(int serverIndex, UserData userData)
     {
         if (serverIndex != ServerIndex)
         {
             return Task.CompletedTask;
         }
-        CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromSeconds(5));
-        _ = Task.Run(async () =>
-        {
-            var pair = _pairManager.GetOnlineUserPairs(ServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
-            var perm = pair.UserPair!.OwnPermissions;
-            perm.SetPaused(paused: true);
-            await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
-            // wait until it's changed
-            while (pair.UserPair!.OwnPermissions != perm)
-            {
-                await Task.Delay(250, cts.Token).ConfigureAwait(false);
-                Logger.LogTrace("Waiting for permissions change for {data}", userData);
-            }
 
-            perm.SetPaused(paused: false);
-            await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
-        }, cts.Token).ContinueWith((t) => cts.Dispose());
+        using var cts = new CancellationTokenSource();
+        TaskHelpers.FireAndForget(async () =>
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+                var onlinePairs = _pairManager.GetOnlineUserPairs(ServerIndex);
+                if (!onlinePairs.Any(p => p.UserPair != null && p.UserData.UID.Equals(userData.UID)))
+                {
+                    Logger.LogInformation("User {AliasOrUID} is not online on server {ServerName}, cannot cycle pause", userData.AliasOrUID, _serverName);
+                    return;
+                }
+
+                var pair = onlinePairs.SingleOrDefault(p => p.UserPair != null && p.UserData == userData);
+                if (pair is null)
+                    return;
+
+                var perm = pair.UserPair!.OwnPermissions;
+                perm.SetPaused(paused: true);
+
+                await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+
+                // wait until it's changed
+                while (pair.UserPair!.OwnPermissions != perm)
+                {
+                    await Task.Delay(250, cts.Token).ConfigureAwait(false);
+                    Logger.LogTrace("Waiting for permissions change for {UserData}", userData);
+                }
+
+                perm.SetPaused(paused: false);
+                await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+                Logger.LogInformation("Cycle pause state for User {AliasOrUID} on server {ServerName} was successful", userData.AliasOrUID, _serverName);
+            }
+            catch (OperationCanceledException)
+            {
+                Logger.LogWarning("CyclePauseAsync timed out for user {UserData} on {ServerName}", userData, _serverName);
+            }
+        }, Logger, cts.Token);
 
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Pause the specified user
+    /// </summary>
+    /// <returns></returns>
     private async Task PauseAsync(int serverIndex, UserData userData)
     {
         if (serverIndex != ServerIndex)
