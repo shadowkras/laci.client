@@ -925,7 +925,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             ServerState.MultiChara => "Your Character Configuration has multiple characters configured with same name and world. You will not be able to connect until you fix this issue. Remove the duplicates from the configuration in Settings -> Service Settings -> Character Management and reconnect manually after.",
             ServerState.OAuthMisconfigured => "OAuth2 is enabled but not fully configured, verify in the Settings -> Service Settings that you have OAuth2 connected and, importantly, a UID assigned to your current character.",
             ServerState.OAuthLoginTokenStale => "Your OAuth2 login token is stale and cannot be used to renew. Go to the Settings -> Service Settings and unlink then relink your OAuth2 configuration.",
-            ServerState.NoAutoLogon => "This character has automatic login disabled for all servers. Press the connect button to connect to a server.",
+            ServerState.NoAutoLogon => "This character has automatic login disabled for the server. Press the connect button to connect to a server.",
             ServerState.NoHubFound => "Sync Hub not found. Please request the correct Hub URI from the person running the server you want to connect to.",
             _ => string.Empty
         };
