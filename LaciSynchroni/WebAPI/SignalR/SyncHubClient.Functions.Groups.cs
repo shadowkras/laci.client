@@ -120,6 +120,6 @@ public partial class SyncHubClient : IServerHub
 
     private void CheckConnection()
     {
-        if (_serverState is not (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting)) throw new InvalidDataException("Not connected");
+        if (ServerState is not (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting)) throw new InvalidDataException("Not connected");
     }
 }

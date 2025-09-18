@@ -2,12 +2,15 @@
 using LaciSynchroni.Common.Dto;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
+using LaciSynchroni.Services.Events;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
+using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI.SignalR.Utils;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace LaciSynchroni.WebAPI;
 using ServerIndex = int;
@@ -34,7 +37,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     /// No more usage of ServerConfigurationManager#Current server
     /// Down the line, we move this into a list or a Map of active servers.
     /// </summary>
-    private readonly ConcurrentDictionary<ServerIndex, SyncHubClient> _syncClients = new();
+    private readonly ConcurrentDictionary<ServerIndex, SyncHubClient> _syncHubClients = new();
 
     public ApiController(ILogger<ApiController> logger, ILoggerFactory loggerFactory, DalamudUtilService dalamudUtil, ILoggerProvider loggerProvider,
         PairManager pairManager, ServerConfigurationManager serverConfigManager, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) : base(logger, mediator)
@@ -53,12 +56,16 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     public ServerState GetServerStateForServer(ServerIndex index)
     {
-        return GetClientForServer(index)?._serverState ?? ServerState.Offline;
+        return GetClientForServer(index)?.ServerState ?? ServerState.Offline;
     }
 
-    public bool IsServerConnected(int index)
+    /// <summary>
+    /// Returns true if the server at the given index is connected.
+    /// </summary>
+    /// <returns></returns>
+    public bool IsServerConnected(ServerIndex index)
     {
-        return GetClientForServer(index)?._serverState == ServerState.Connected;
+        return GetClientForServer(index)?.ServerState == ServerState.Connected;
     }
 
     public bool IsServerConnectingOrConnected(int index)
@@ -72,11 +79,19 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         return _serverConfigManager.GetServerByIndex(index).ServerName ?? string.Empty;
     }
 
+    /// <summary>
+    /// Gets the number of online users for the given server index.
+    /// </summary>
+    /// <returns></returns>
     public int GetOnlineUsersForServer(ServerIndex index)
     {
         return GetClientForServer(index)?.SystemInfoDto?.OnlineUsers ?? 0;
     }
 
+    /// <summary>
+    /// Returns true if the server is in a state that it can be considered "alive", meaning it's not offline or in an error state.
+    /// </summary>
+    /// <returns></returns>
     public bool IsServerAlive(int index)
     {
         var serverState = GetServerStateForServer(index);
@@ -84,19 +99,30 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             or ServerState.Unauthorized or ServerState.Disconnected;
     }
 
+    /// <summary>
+    /// Gets the total number of online users across all connected servers.
+    /// </summary>
     public int OnlineUsers
     {
         get
         {
-            return _syncClients.Sum(entry => entry.Value.SystemInfoDto?.OnlineUsers ?? 0);
+            return _syncHubClients.Sum(entry => entry.Value.SystemInfoDto?.OnlineUsers ?? 0);
         }
     }
 
+    /// <summary>
+    /// Gets the server info for the given server index.
+    /// </summary>
+    /// <returns></returns>
     public ServerInfo? GetServerInfoForServer(ServerIndex index)
     {
         return GetClientForServer(index)?.ConnectionDto?.ServerInfo;
     }
 
+    /// <summary>
+    /// Gets the default permissions for the given server index.
+    /// </summary>
+    /// <returns></returns>
     public DefaultPermissionsDto? GetDefaultPermissionsForServer(ServerIndex index)
     {
         return GetClientForServer(index)?.ConnectionDto?.DefaultPreferredPermissions;
@@ -106,135 +132,222 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     {
         get
         {
-            return _syncClients.Any(client => client.Value._serverState == ServerState.Connected);
+            return _syncHubClients.Any(client => client.Value.ServerState == ServerState.Connected);
         }
     }
 
+    /// <summary>
+    /// Returns true if any server is currently in the process of connecting.
+    /// </summary>
     public bool AnyServerConnecting
     {
         get
         {
-            return _syncClients.Any(client => client.Value._serverState == ServerState.Connecting);
+            return _syncHubClients.Any(client => client.Value.ServerState == ServerState.Connecting);
         }
     }
 
+    /// <summary>
+    /// Returns true if any server is currently in the process of disconnecting.
+    /// </summary>
     public bool AnyServerDisconnecting
     {
         get
         {
-            return _syncClients.Any(client => client.Value._serverState == ServerState.Disconnecting);
+            return _syncHubClients.Any(client => client.Value.ServerState == ServerState.Disconnecting);
         }
     }
 
+    /// <summary>
+    /// Gets the indexes of all currently connected servers.
+    /// </summary>
     public int[] ConnectedServerIndexes {
         get
         {
-            return [.._syncClients.Where(p=> p.Value._serverState == ServerState.Connected)?.Select(p=> p.Key) ?? []];
+            return [.._syncHubClients.Where(p=> p.Value.ServerState == ServerState.Connected)?.Select(p=> p.Key) ?? []];
         }
     }
 
+    /// <summary>
+    /// Returns true if the server at the given index is in the process of connecting state.
+    /// </summary>
+    /// <returns></returns>
     public bool IsServerConnecting(ServerIndex index)
     {
         return GetServerStateForServer(index) == ServerState.Connecting;
     }
 
+    /// <summary>
+    /// Gets the maximum number of syncshells a user can join on the given server.
+    /// </summary>
+    /// <returns></returns>
     public int GetMaxGroupsJoinedByUser(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsJoinedByUser ?? 0;
     }
 
+    /// <summary>
+    /// Gets the maximum number of syncshells a user can create on the given server.
+    /// </summary>
+    /// <param name="serverIndex"></param>
+    /// <returns></returns>
     public int GetMaxGroupsCreatedByUser(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.ServerInfo.MaxGroupsCreatedByUser ?? 0;
     }
 
+    /// <summary>
+    /// Gets the authentication failure message for the given server index, if any.
+    /// </summary>
+    /// <returns></returns>
     public string? GetAuthFailureMessageByServer(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.AuthFailureMessage;
     }
 
+    /// <summary>
+    /// Gets the UID of the connected user for the given server index, or an empty string if not connected.
+    /// </summary>
+    /// <returns></returns>
     public string GetUidByServer(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.UID ?? string.Empty;
     }
 
+    /// <summary>
+    /// Gets the display name (alias or UID) of the connected user for the given server index, or an empty string if not connected.
+    /// </summary>
+    /// <returns></returns>
     public string GetDisplayNameByServer(ServerIndex serverIndex)
     {
         return GetClientForServer(serverIndex)?.ConnectionDto?.User.AliasOrUID ?? string.Empty;
     }
 
+    /// <summary>
+    /// Pauses the connection to the server at the given index, disposing of the client.
+    /// </summary>
+    /// <returns></returns>
     public async Task PauseConnectionAsync(ServerIndex serverIndex)
     {
-        _syncClients.TryRemove(serverIndex, out SyncHubClient? removed);
+        _syncHubClients.TryRemove(serverIndex, out SyncHubClient? removed);
         if (removed != null)
         {
-            await removed.DisposeAsync().ConfigureAwait(false);
+            await removed.DisposeConnectionAsync().ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    /// Creates connections for the server at the given index, if not already connected.
+    /// </summary>
+    /// <returns></returns>
     public async Task CreateConnectionsAsync(ServerIndex serverIndex)
     {
         await ConnectMultiClient(serverIndex).ConfigureAwait(false);
     }
 
-    public Task CyclePauseAsync(ServerIndex serverIndex, UserData userData)
+    /// <summary>
+    /// Cycles the pause state of the connection for the server at the given index.
+    /// </summary>
+    public void CyclePauseAsync(ServerIndex serverIndex, UserData userData)
     {
-        var cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(5));
-        _ = Task.Run(async () =>
-        {
-            await GetOrCreateForServer(serverIndex).CyclePauseAsync(serverIndex, userData).ConfigureAwait(false);
-        }, cts.Token);
-        return Task.CompletedTask;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var client = GetClientForServer(serverIndex);
+        if (client is not null)
+            TaskHelpers.FireAndForget(() => client.CyclePauseAsync(serverIndex, userData), Logger, cts.Token);
     }
 
+    /// <summary>
+    /// Creates a new SyncHubClient for the given server index.
+    /// </summary>
+    /// <returns></returns>
     private SyncHubClient CreateNewClient(ServerIndex serverIndex)
     {
         return new SyncHubClient(serverIndex, _serverConfigManager, _pairManager, _dalamudUtil,
             _loggerFactory, _loggerProvider, Mediator, _multiConnectTokenService, _syncConfigService, _httpClient);
     }
 
+    /// <summary>
+    /// Gets the SyncHubClient for the given server index, or null if not found.
+    /// </summary>
+    /// <returns></returns>
     private SyncHubClient? GetClientForServer(ServerIndex serverIndex)
     {
-        _syncClients.TryGetValue(serverIndex, out var client);
+        _syncHubClients.TryGetValue(serverIndex, out var client);
+        return client;
+
+    }
+
+    /// <summary>
+    /// Gets or creates the SyncHubClient for the given server index.
+    /// </summary>
+    /// <returns></returns>
+    private SyncHubClient GetOrCreateForServer(ServerIndex serverIndex, [CallerMemberName] string callerName = "")
+    {
+        Logger.LogDebug("({CallerName}) GetOrCreateForServer: serverIndex={ServerIndex}", callerName, serverIndex);
+        var client = _syncHubClients.GetOrAdd(serverIndex, CreateNewClient);
         return client;
     }
 
-    private SyncHubClient GetOrCreateForServer(ServerIndex serverIndex)
-    {
-        return _syncClients.GetOrAdd(serverIndex, CreateNewClient);
-    }
-
+    /// <summary>
+    /// Connects the SyncHubClient for the given server index, creating it if necessary.
+    /// </summary>
+    /// <returns></returns>
     private Task ConnectMultiClient(ServerIndex serverIndex)
     {
         return GetOrCreateForServer(serverIndex).CreateConnectionsAsync();
     }
 
+    /// <summary>
+    /// Automatically connects clients for all servers that are not fully paused.
+    /// </summary>
     public void AutoConnectClients()
     {
+        Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Informational,
+            $"Auto-connecting clients initiated.")));
+
         // Fire and forget the auto connect. if something goes wrong, it'll be displayed in UI
-        _ = Task.Run(async () =>
+        using var cts = new CancellationTokenSource();
+        TaskHelpers.FireAndForget(async () =>
         {
+            var charaName = await _dalamudUtil.GetPlayerNameAsync().ConfigureAwait(false);
+            var worldId = await _dalamudUtil.GetHomeWorldIdAsync().ConfigureAwait(false);
+
+            Logger.LogInformation("Auto-connecting clients for character {Character} on world {WorldId}", charaName, worldId);
+
             foreach (int serverIndex in _serverConfigManager.ServerIndexes)
             {
                 var server = _serverConfigManager.GetServerByIndex(serverIndex);
                 if (!server.FullPause)
                 {
-                    await GetOrCreateForServer(serverIndex).DalamudUtilOnLogIn().ConfigureAwait(false);
+                    await GetOrCreateForServer(serverIndex).DalamudUtilOnLogIn(charaName, worldId).ConfigureAwait(false);
                 }
             }
-        });
+        }, Logger, cts.Token);
     }
 
+    /// <summary>
+    /// Disposes all clients and their connections when the ApiController is disposed.
+    /// </summary>
     protected override void Dispose(bool disposing)
     {
-        // We can always just Dispose() this - even if not used
-        foreach (var syncHubClient in _syncClients.Values)
+        if(disposing)
         {
-            syncHubClient.Dispose();
+            _ = DisposeAllClientsAsync();
+            _syncHubClients.Clear();
         }
-        _syncClients.Clear();
+
         base.Dispose(disposing);
+    }
+
+    /// <summary>
+    /// Disposes all connections on all sync clients registered.
+    /// </summary>
+    /// <returns></returns>
+    private async Task DisposeAllClientsAsync()
+    {
+        var disposeTasks = _syncHubClients.Values
+            .Select(client => client.DisposeConnectionAsync());
+        await Task.WhenAll(disposeTasks).ConfigureAwait(false);
     }
 }
 #pragma warning restore MA0040
