@@ -228,11 +228,17 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private CancellationToken CreateConnectToken()
     {
-        _connectionCancellationTokenSource?.Cancel();
+        CancelConnectToken();
         _connectionCancellationTokenSource?.Dispose();
         _connectionCancellationTokenSource = new CancellationTokenSource();
         var cancelReconnectToken = _connectionCancellationTokenSource.Token;
         return cancelReconnectToken;
+    }
+
+    private void CancelConnectToken()
+    {
+        if (!_connectionCancellationTokenSource?.IsCancellationRequested ?? false)
+            _connectionCancellationTokenSource?.Cancel();
     }
 
     private async Task TryConnect(Uri serverHubUri, CancellationToken cancellationToken)
@@ -344,7 +350,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Informational,
                 $"Stopping existing connection to {ServerName}")));
             _initialized = false;
-            _healthCheckTokenSource?.Cancel();
+
+            if(!_healthCheckTokenSource?.IsCancellationRequested ?? false)
+                _healthCheckTokenSource?.CancelAsync();
+
             Mediator.Publish(new DisconnectedMessage(ServerIndex));
             _connection = null;
             ConnectionDto = null;
@@ -420,7 +429,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private Task ConnectionOnClosed(Exception? arg)
     {
-        _healthCheckTokenSource?.Cancel();
+        CancelHealthCheckToken();
+
         Mediator.Publish(new DisconnectedMessage(ServerIndex));
         ServerState = ServerState.Offline;
         if (arg != null)
@@ -463,7 +473,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private Task ConnectionOnReconnecting(Exception? arg)
     {
         _doNotNotifyOnNextInfo = true;
-        _healthCheckTokenSource?.Cancel();
+        CancelHealthCheckToken();
         ServerState = ServerState.Reconnecting;
         Logger.LogWarning(arg, "Connection to {ServerName} closed... Reconnecting", ServerName);
         Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Warning,
@@ -559,7 +569,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var cts = new CancellationTokenSource();
         try
         {
-            _healthCheckTokenSource?.Cancel();
+            CancelHealthCheckToken();
             _healthCheckTokenSource?.Dispose();
             _healthCheckTokenSource = cts;
         }
@@ -569,6 +579,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
 
         return cts;
+    }
+
+    private void CancelHealthCheckToken()
+    {
+        if (!_healthCheckTokenSource?.IsCancellationRequested ?? false)
+            _healthCheckTokenSource?.Cancel();
     }
 
     private async Task<bool> RefreshTokenAsync(CancellationToken ct)
@@ -639,7 +655,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         try
         {
-            _connectionCancellationTokenSource?.Cancel();
+            if(!_connectionCancellationTokenSource?.IsCancellationRequested ?? false)
+                _connectionCancellationTokenSource?.CancelAsync();
+
             _connectionCancellationTokenSource?.Dispose();
             await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
         }
