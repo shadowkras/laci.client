@@ -17,9 +17,7 @@ namespace LaciSynchroni.Services
 
             lock (_resourceLock)
             {
-                bool renderLockExists = _renderLocks.TryGetValue(playerNameHash, out ServerIndex existingServerIndex);
-                if (renderLockExists) return existingServerIndex;
-                return _renderLocks.TryAdd(playerNameHash, serverIndex.Value) ? serverIndex.Value : -1;
+                return _renderLocks.GetOrAdd(playerNameHash, serverIndex.Value);
             }
         }
 
