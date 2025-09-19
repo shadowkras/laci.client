@@ -212,6 +212,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 }
 
                 ServerState = ServerState.Reconnecting;
+                _logger.LogInformation("Failed to establish connection to {ServerName}, retrying", ServerName);
                 await Task.Delay(TimeSpan.FromSeconds(new Random().Next(5, 20)), connectionCancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
