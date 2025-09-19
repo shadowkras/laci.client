@@ -362,7 +362,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
         {
             await StopConnectionAsync(ServerState.VersionMisMatch).ConfigureAwait(false);
-            throw new HttpRequestException($"Client version mismatch with service{_serverName}: Server {ConnectionDto.ServerVersion}", null, HttpStatusCode.BadRequest);
+           Logger.LogWarning("Client version mismatch with service {ServerName}: {ServerVersion}", _serverName, ConnectionDto.ServerVersion);
         }
         // Also trigger some warnings
         TriggerConnectionWarnings(ConnectionDto);
