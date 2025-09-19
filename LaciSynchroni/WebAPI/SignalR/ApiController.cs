@@ -66,7 +66,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     public bool IsServerConnectingOrConnected(int index)
     {
-        var serverState = GetClientForServer(index)?._serverState;
+        var serverState = GetClientForServer(index)?.ServerState;
         return serverState is (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting);
     }
 
