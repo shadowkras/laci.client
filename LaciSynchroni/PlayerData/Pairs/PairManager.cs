@@ -168,9 +168,25 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         var key = BuildKey(user, serverIndex);
         if (_allClientPairs.TryGetValue(key, out var pair))
         {
+            // Gets cleared when the pair is marked offline, but we need it after for the redraw
+            var removedPairName = pair.PlayerName;
             var message = new ServerBasedUserKey(user, serverIndex);
             Mediator.Publish(new ClearProfileDataMessage(message));
             pair.MarkOffline();
+            // When we disconnect this pair, we might have some leftovers we need to redraw
+            // This happens when the same character is connected through more than one service. In these scenarios, the pair exists
+            // twice. Once for each server
+            // When one of the pairs gets disposed, the other is not aware of the disconnect. A redraw will not be triggered. As a
+            // result, the other pair remains unchanged in the vanilla state
+            // To fix this, we find all other pairs with the same name and redraw them if visible.
+             _allClientPairs
+                .Where(valuePair => string.Equals(valuePair.Value.PlayerName, removedPairName, StringComparison.OrdinalIgnoreCase))
+                .Where(valuePair => valuePair.Value.IsVisible)
+                .Where(valuePair => valuePair.Value != pair)
+                .Select(valuePair => valuePair.Value)
+                .ToList()
+                .ForEach(p => p.ApplyLastReceivedData(true));
+          
         }
 
         RecreateLazy();
