@@ -189,7 +189,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         {
             // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
             // Also set to "Connecting" at this point
-            Logger.LogInformation("Already connected to {ServerName}, stopping connection", _serverName);
+            Logger.LogDebug("Already connected to {ServerName}, stopping connection", _serverName);
             await StopConnectionAsync(ServerState.Connecting).ConfigureAwait(false);
         }
 
