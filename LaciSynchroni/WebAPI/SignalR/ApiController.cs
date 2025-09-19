@@ -332,7 +332,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     {
         if(disposing)
         {
-            _ = DisposeAllClientsAsync();
+            DisposeAllClientsAsync().GetAwaiter().GetResult();
             _syncHubClients.Clear();
         }
 
