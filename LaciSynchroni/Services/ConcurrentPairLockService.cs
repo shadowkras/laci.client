@@ -8,7 +8,7 @@ namespace LaciSynchroni.Services
 
     public class ConcurrentPairLockService
     {
-        private readonly ConcurrentDictionary<PlayerNameHash, ServerIndex> _renderLocks = new();
+        private readonly ConcurrentDictionary<PlayerNameHash, ServerIndex> _renderLocks = new(StringComparer.Ordinal);
         private readonly Lock _resourceLock = new();
 
         public int GetRenderLock(PlayerNameHash? playerNameHash, ServerIndex? serverIndex)
@@ -18,7 +18,7 @@ namespace LaciSynchroni.Services
             lock (_resourceLock)
             {
                 bool renderLockExists = _renderLocks.TryGetValue(playerNameHash, out ServerIndex existingServerIndex);
-                if (renderLockExists && existingServerIndex == serverIndex) return existingServerIndex;
+                if (renderLockExists) return existingServerIndex;
                 return _renderLocks.TryAdd(playerNameHash, serverIndex.Value) ? serverIndex.Value : -1;
             }
         }
