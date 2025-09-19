@@ -33,19 +33,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private readonly bool _isWine;
     private readonly ILogger _logger;
-
-    /// <summary>
-    /// For testing if we can connect to the hub
-    /// </summary>
     private readonly HttpClient _httpClient;
     private readonly ILoggerProvider _loggerProvider;
     private readonly MultiConnectTokenService _multiConnectTokenService;
     private readonly PairManager _pairManager;
     private readonly SyncConfigService _syncConfigService;
     private readonly DalamudUtilService _dalamudUtil;
-
-    // This is a bit unfortunate, but some code requires saving of the config. Potentially, we can refactor this late to be less cyclic
-    // Potentially, we can move _server out of this class and always use _serverConfigurationManager.
     private readonly ServerConfigurationManager _serverConfigurationManager;
 
     private readonly Random _random = new Random();
@@ -58,17 +51,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private bool _initialized;
     private bool _naggedAboutLod = false;
 
-    /// <summary>
-    /// Current state of the server connection
-    /// </summary>
     public ServerState ServerState { get; private set; }
     private CancellationTokenSource? _healthCheckTokenSource = new();
     private CancellationTokenSource? _connectionCancellationTokenSource;
     private bool _doNotNotifyOnNextInfo = false;
 
-    /// <summary>
-    /// If set, contains the last authentication failure message from the server
-    /// </summary>
     public string AuthFailureMessage { get; private set; } = string.Empty;
     private string? _lastUsedToken;
     private CensusUpdateMessage? _lastCensus;
@@ -76,35 +63,16 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private const int _maxReconnectBackoff = 60;
     private const double _jitterReconnectFactor = 0.2;
 
-    /// <summary>
-    /// Connection info from the server, if connected
-    /// </summary>
     public ConnectionDto? ConnectionDto { get; private set; }
 
-    /// <summary>
-    /// System info from the server, if connected
-    /// </summary>
     public SystemInfoDto? SystemInfoDto { get; private set; }
 
-    /// <summary>
-    /// UID of the connected user, or empty string if not connected
-    /// </summary>
     public string UID => ConnectionDto?.User?.UID ?? string.Empty;
 
-    /// <summary>
-    /// True if we are connected to the server
-    /// </summary>
     protected bool IsConnected => ServerState == ServerState.Connected;
 
-    /// <summary>
-    /// The server configuration we are using
-    /// </summary>
     private ServerStorage ServerToUse => _serverConfigurationManager.GetServerByIndex(ServerIndex);
 
-
-    /// <summary>
-    /// Name of the server we are connected to, or "Unknown service" if not connected
-    /// </summary>
     private string ServerName => ServerToUse?.ServerName ?? "Unknown service";
    
 
@@ -150,15 +118,10 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         });
     }
 
-    /// <summary>
-    /// Create connections to the server, if not paused or in error state
-    /// </summary>
-    /// <returns></returns>
     public async Task CreateConnectionsAsync()
     {
         if (ServerToUse is null)
         {
-            //Server info was deleted from the configs or the config was deleted.
             return;
         }
 
@@ -271,10 +234,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             Logger.LogInformation("Reconnect loop to {ServerName} exited due to cancellation token.", ServerName);
     }
 
-    /// <summary>
-    /// Create a new cancellation token for connection attempts, cancelling any previous ones.
-    /// </summary>
-    /// <returns></returns>
     private CancellationToken CreateConnectToken()
     {
         _connectionCancellationTokenSource?.Cancel();
@@ -284,19 +243,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return cancelReconnectToken;
     }
 
-    /// <summary>
-    /// Handle a reconnect delay with jitter and backoff, logging at the specified loglevel
-    /// </summary>
-    /// <returns></returns>
     private async Task<int> HandleReconnectDelay(string reason, int backoffSeconds, CancellationToken cancelToken)
     {
         return await HandleReconnectDelay(LogLevel.Information, reason, backoffSeconds, cancelToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Handle a reconnect delay with jitter and backoff, logging at the specified loglevel
-    /// </summary>
-    /// <returns></returns>
     private async Task<int> HandleReconnectDelay(LogLevel loglevel, string reason, int backoffSeconds, CancellationToken cancelToken)
     {
         double delay = GetRandomReconnectDelay(backoffSeconds);
@@ -314,11 +265,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return GetIncreasedReconnectBackoff(backoffSeconds);
     }
 
-    /// <summary>
-    /// Get a random delay in seconds for reconnect, with jitter, maxed at maxReconnectBackoff
-    /// </summary>
-    /// <param name="backoffSeconds"></param>
-    /// <returns></returns>
     private double GetRandomReconnectDelay(int backoffSeconds)
     {
         double jitter = (_random.NextDouble() * 2 - 1) * _jitterReconnectFactor;
@@ -326,21 +272,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return Math.Min(delay, _maxReconnectBackoff);
     }
 
-    /// <summary>
-    /// Double backoff for next attempt, maxed at maxReconnectBackoff.
-    /// </summary>
-    /// <param name="backoffSeconds"></param>
-    /// <returns></returns>
     private static int GetIncreasedReconnectBackoff(int backoffSeconds)
     {
         return Math.Min(backoffSeconds * 2, _maxReconnectBackoff);
     }
 
-    /// <summary>
-    /// Try to connect to the server hub, throwing exceptions on failure
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="HttpRequestException"></exception>
     private async Task TryConnect(Uri serverHubUri, CancellationToken cancellationToken)
     {
         AuthFailureMessage = string.Empty;
@@ -375,10 +311,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         await LoadOnlinePairsAsync().ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Attempts to discover the server hub uri by attempting to handshake with known hub paths
-    /// </summary>
-    /// <returns></returns>
     private async Task<Uri?> FindServerHubUrl()
     {
         ServerState = ServerState.Connecting;
@@ -419,11 +351,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return null;
     }
 
-    /// <summary>
-    /// Update the token used for connection, throwing HttpRequestException on failure
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="HttpRequestException"></exception>
     private async Task UpdateToken(CancellationToken cancellationToken)
     {
         try
@@ -437,10 +364,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Stop and dispose the current connection, setting the server state to the specified state
-    /// </summary>
-    /// <returns></returns>
     private async Task StopConnectionAsync(ServerState state)
     {
         ServerState = ServerState.Disconnecting;
@@ -474,10 +397,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         ServerState = state;
     }
 
-    /// <summary>
-    /// Initialize a new HubConnection to the specified server hub uri
-    /// </summary>
-    /// <returns></returns>
     private HubConnection InitializeHubConnection(Uri serverHubUri, CancellationToken ct)
     {
         var transportType = ServerToUse.HttpTransportType switch
@@ -541,10 +460,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return _connection;
     }
 
-    /// <summary>
-    /// Handle connection closed event
-    /// </summary>
-    /// <returns></returns>
     private Task ConnectionOnClosed(Exception? arg)
     {
         _healthCheckTokenSource?.Cancel();
@@ -562,10 +477,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Handle connection reconnected event
-    /// </summary>
-    /// <returns></returns>
     private async Task ConnectionOnReconnectedAsync(string? arg)
     {
         ServerState = ServerState.Reconnecting;
@@ -591,10 +502,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Handle connection reconnecting event
-    /// </summary>
-    /// <returns></returns>
     private Task ConnectionOnReconnecting(Exception? arg)
     {
         _doNotNotifyOnNextInfo = true;
@@ -606,17 +513,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Get the current connection dto, throwing if not connected
-    /// </summary>
-    /// <returns></returns>
     public Task<ConnectionDto> GetConnectionDto() => GetConnectionDtoAsync(true);
 
-    /// <summary>
-    /// Get the current connection dto, throwing if not connected
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="InvalidOperationException"></exception>
     public async Task<ConnectionDto> GetConnectionDtoAsync(bool publishConnected)
     {
         if (_connection is null)
@@ -628,9 +526,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return dto;
     }
 
-    /// <summary>
-    /// Initialize all the API hooks for SignalR calls
-    /// </summary>
     private void InitializeApiHooks()
     {
         if (_connection == null) return;
@@ -672,10 +567,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _initialized = true;
     }
 
-    /// <summary>
-    /// Periodically check the client health, reconnecting if necessary
-    /// </summary>
-    /// <returns></returns>
     private async Task ClientHealthCheckAsync()
     {
         using var cts = CreateHealthCheckToken();
@@ -705,10 +596,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Create a new cancellation token for health checks, cancelling any previous ones.
-    /// </summary>
-    /// <returns></returns>
     private CancellationTokenSource CreateHealthCheckToken()
     {
         var cts = new CancellationTokenSource();
@@ -726,10 +613,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return cts;
     }
 
-    /// <summary>
-    /// Refresh the token, reconnecting if it has changed
-    /// </summary>
-    /// <returns></returns>
     private async Task<bool> RefreshTokenAsync(CancellationToken ct)
     {
         bool requireReconnect = false;
@@ -762,10 +645,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return requireReconnect;
     }
 
-    /// <summary>
-    /// Load all initial pairs and groups from the server
-    /// </summary>
-    /// <returns></returns>
     private async Task LoadInitialPairsAsync()
     {
         foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
@@ -781,10 +660,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Load all currently online pairs from the server
-    /// </summary>
-    /// <returns></returns>
     private async Task LoadOnlinePairsAsync()
     {
         CensusDataDto? dto = null;
@@ -802,10 +677,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Dispose the current connection, stopping it first
-    /// </summary>
-    /// <returns></returns>
     public async Task DisposeConnectionAsync()
     {
         try
@@ -824,19 +695,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Dispose the current connection, stopping it first
-    /// </summary>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
         _ = Task.Run(async () => await DisposeConnectionAsync().ConfigureAwait(false));
     }
 
-    /// <summary>
-    /// Check the client health by invoking the server method
-    /// </summary>
-    /// <returns></returns>
     public async Task<bool> CheckClientHealth()
     {
         if (_connection is null)
@@ -845,10 +709,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return await _connection.InvokeAsync<bool>(nameof(CheckClientHealth)).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Handle dalamud login event, logging in if auto login is enabled for any servers.
-    /// </summary>
-    /// <returns></returns>
     public async Task DalamudUtilOnLogIn(string characterName, uint worldId)
     {
         var auth = ServerToUse?.Authentications?
@@ -865,19 +725,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    /// <summary>
-    /// Handle dalamud logout event
-    /// </summary>
     private void DalamudUtilOnLogOut()
     {
         StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false).GetAwaiter().GetResult();
         ServerState = ServerState.Offline;
     }
 
-    /// <summary>
-    /// Cycle pause for the specified user, pausing and unpausing them with a short delay
-    /// </summary>
-    /// <returns></returns>
     public Task CyclePauseAsync(int serverIndex, UserData userData)
     {
         if (serverIndex != ServerIndex)
@@ -928,10 +781,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Pause the specified user
-    /// </summary>
-    /// <returns></returns>
     private async Task PauseAsync(int serverIndex, UserData userData)
     {
         if (serverIndex != ServerIndex)
