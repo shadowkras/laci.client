@@ -1,10 +1,12 @@
 ﻿using LaciSynchroni.Common.Data;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
+using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI;
 using LaciSynchroni.WebAPI.Files;
 using Microsoft.Extensions.Logging;
+using System.Linq;
 
 namespace LaciSynchroni.PlayerData.Pairs;
 
@@ -14,6 +16,7 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
     private readonly DalamudUtilService _dalamudUtil;
     private readonly FileUploadManager _fileTransferManager;
     private readonly PairManager _pairManager;
+    private readonly ServerConfigurationManager _serverManager;
     private CharacterData? _lastCreatedData;
     private CharacterData? _uploadingCharacterData = null;
     private readonly List<ServerBasedUserKey> _previouslyVisiblePlayers = [];
@@ -24,12 +27,14 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
 
 
     public VisibleUserDataDistributor(ILogger<VisibleUserDataDistributor> logger, ApiController apiController, DalamudUtilService dalamudUtil,
-        PairManager pairManager, SyncMediator mediator, FileUploadManager fileTransferManager) : base(logger, mediator)
+        PairManager pairManager, SyncMediator mediator, FileUploadManager fileTransferManager,
+        ServerConfigurationManager serverManager) : base(logger, mediator)
     {
         _apiController = apiController;
         _dalamudUtil = dalamudUtil;
         _pairManager = pairManager;
         _fileTransferManager = fileTransferManager;
+        _serverManager = serverManager;
         Mediator.Subscribe<DelayedFrameworkUpdateMessage>(this, (_) => FrameworkOnUpdate());
         Mediator.Subscribe<CharacterDataCreatedMessage>(this, (msg) =>
         {
@@ -37,12 +42,12 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
             if (_lastCreatedData == null || (!string.Equals(newData.DataHash.Value, _lastCreatedData.DataHash.Value, StringComparison.Ordinal)))
             {
                 _lastCreatedData = newData;
-                Logger.LogTrace("Storing new data hash {hash}", newData.DataHash.Value);
+                Logger.LogTrace("[{Hash}] Storing new data hash", newData.DataHash.Value);
                 PushToAllVisibleUsers(forced: true);
             }
             else
             {
-                Logger.LogTrace("Data hash {hash} equal to stored data", newData.DataHash.Value);
+                Logger.LogTrace("[{Hash}] Data hash equal to stored data", newData.DataHash.Value);
             }
         });
 
@@ -66,12 +71,19 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
 
     private void PushToAllVisibleUsers(bool forced = false, int? serverIndex = null)
     {
+        _usersToPushDataTo.Clear();//We make sure no remnants are here.
+
         if (serverIndex != null)
         {
             foreach (var user in _pairManager.GetVisibleUsers((int)serverIndex))
             {
                 _usersToPushDataTo.Add(user);
             }
+
+
+            var serverName = _serverManager.GetServerNameByIndex(serverIndex.Value);
+            Logger.LogDebug("[{Hash}] Pushing data to {ServerName} for {Count} visible players", _lastCreatedData?.DataHash.Value ?? "UNKNOWN", serverName, _usersToPushDataTo.Count);
+            PushCharacterData(serverIndex.Value, serverName, forced);
         }
         else
         {
@@ -79,44 +91,54 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
             {
                 _usersToPushDataTo.Add(user);
             }
-        }
 
-        if (_usersToPushDataTo.Count > 0)
-        {
-            Logger.LogDebug("Pushing data {hash} for {count} visible players", _lastCreatedData?.DataHash.Value ?? "UNKNOWN", _usersToPushDataTo.Count);
-            foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+            if (_usersToPushDataTo.Count > 0)
             {
-                PushCharacterData(connectedServerIndex, forced);
+                Logger.LogDebug("[{Hash}] Pushing data to all servers for {Count} visible players", _lastCreatedData?.DataHash.Value ?? "UNKNOWN", _usersToPushDataTo.Count);
+                var serverIndexes = GetVisibleUsersOnConnectedServers(_usersToPushDataTo);
+                foreach (int connectedServerIndex in serverIndexes)
+                {
+                    var serverName = _serverManager.GetServerNameByIndex(connectedServerIndex);
+                    PushCharacterData(connectedServerIndex, serverName, forced);
+                }
             }
         }
     }
 
     private void FrameworkOnUpdate()
     {
-        if (!_dalamudUtil.GetIsPlayerPresent() || !_apiController.AnyServerConnected) return;
+        if (!_dalamudUtil.GetIsPlayerPresent() || !_apiController.AnyServerConnected)
+            return;
 
         var allVisibleUsers = _pairManager.GetVisibleUsersAcrossAllServers();
         var newVisibleUsers = allVisibleUsers.Except(_previouslyVisiblePlayers).ToList();
         _previouslyVisiblePlayers.Clear();
         _previouslyVisiblePlayers.AddRange(allVisibleUsers);
-        if (newVisibleUsers.Count == 0) return;
+        
+        if (newVisibleUsers.Count == 0) 
+            return;
 
-        Logger.LogDebug("Scheduling character data push of {data} to {users}",
+        Logger.LogDebug("[{Data}] Scheduling character data push to {Users}",
             _lastCreatedData?.DataHash.Value ?? string.Empty,
             string.Join(", ", newVisibleUsers.Select(k => k.UserData.AliasOrUID)));
+        
         foreach (var user in newVisibleUsers)
         {
             _usersToPushDataTo.Add(user);
         }
-        foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+
+        var serverIndexes = GetVisibleUsersOnConnectedServers(_usersToPushDataTo);
+        foreach (int connectedServerIndex in serverIndexes)
         {
-            PushCharacterData(connectedServerIndex);
+            var serverName = _serverManager.GetServerNameByIndex(connectedServerIndex);
+            PushCharacterData(connectedServerIndex, serverName);
         }
     }
 
-    private void PushCharacterData(int serverIndex, bool forced = false)
+    private void PushCharacterData(int serverIndex, string serverName, bool forced = false)
     {
-        if (_lastCreatedData == null || _usersToPushDataTo.Count == 0) return;
+        if (_lastCreatedData == null || _usersToPushDataTo.Count == 0) 
+            return;
 
         _ = Task.Run(async () =>
         {
@@ -125,11 +147,13 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
             if (_fileUploadTask == null || (_fileUploadTask?.IsCompleted ?? false) || forced)
             {
                 _uploadingCharacterData = _lastCreatedData.DeepClone();
-                Logger.LogDebug("Starting UploadTask for {hash}, Reason: TaskIsNull: {task}, TaskIsCompleted: {taskCpl}, Forced: {frc}",
-                    _lastCreatedData.DataHash, _fileUploadTask == null, _fileUploadTask?.IsCompleted ?? false, forced);
+                
+                Logger.LogDebug("[{Hash}] Starting UploadTask to {ServerName}, Reason: TaskIsNull: {Task}, TaskIsCompleted: {TaskCpl}, Forced: {Frc}",
+                    _lastCreatedData.DataHash, serverName, _fileUploadTask == null, _fileUploadTask?.IsCompleted ?? false, forced);
+                
                 // Right now, the file manager is still single-instance, so we push to "current" independant of the user
                 var usersToPushDataTo = _usersToPushDataTo.Select(key => key.UserData);
-                _fileUploadTask = _fileTransferManager.UploadFiles(serverIndex, _uploadingCharacterData, [.. usersToPushDataTo]);
+                _fileUploadTask = _fileTransferManager.UploadFiles(serverIndex, serverName, _uploadingCharacterData, [.. usersToPushDataTo]);
             }
 
             if (_fileUploadTask != null)
@@ -139,17 +163,19 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
                 try
                 {
                     await _pushDataSemaphore.WaitAsync(_runtimeCts.Token).ConfigureAwait(false);
-                    if (_usersToPushDataTo.Count == 0) return;
+                    if (_usersToPushDataTo.Count == 0) 
+                        return;
 
                     var serversToPushTo = _usersToPushDataTo.Select(key => key.ServerIndex).Distinct();
-                    Logger.LogDebug("Pushing to servers: {serversToPushTo}", serversToPushTo);
+                    Logger.LogDebug("Pushing to servers: {ServersToPushTo}", serversToPushTo);
                     foreach (int serverIndex in serversToPushTo)
                     {
-                        Logger.LogDebug("Server {serverIndex}: Pushing {data} to {users}", serverIndex,
-                            dataToSend.DataHash,
+                        Logger.LogDebug("[{Data}] Server ({ServerIndex}) {ServerName}: Pushing data to {Users}", dataToSend.DataHash, serverIndex, serverName,                           
                             string.Join(", ", _usersToPushDataTo.Select(k => k.UserData.AliasOrUID)));
+
                         var toPushForServer = _usersToPushDataTo.Where(key => key.ServerIndex == serverIndex)
                             .Select(key => key.UserData);
+
                         await _apiController.PushCharacterData(serverIndex, dataToSend, [.. toPushForServer])
                             .ConfigureAwait(false);
                     }
@@ -166,5 +192,22 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
                 }
             }
         });
+    }
+
+    private List<int> GetVisibleUsersOnConnectedServers(IEnumerable<ServerBasedUserKey> usersToPushDataTo)
+    {
+        var visibleUsersServerIndexes = usersToPushDataTo
+            .Select(p => p.ServerIndex)
+            .Distinct()
+            .ToList();
+
+        if (visibleUsersServerIndexes.Count == 0)
+            return new List<int>();
+
+        var connectedVisibleUsers = _apiController.ConnectedServerIndexes
+            .Where(p => visibleUsersServerIndexes.Contains(p))
+            .ToList();
+
+        return connectedVisibleUsers;
     }
 }

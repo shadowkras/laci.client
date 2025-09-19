@@ -75,7 +75,7 @@ public partial class SyncHubClient
         try
         {
             await _connection!.InvokeAsync(nameof(SetBulkPermissions), dto).ConfigureAwait(false);
-            _logger.LogDebug("Executed SetBulkPermissions {dto}", dto);
+            _logger.LogDebug("Executed SetBulkPermissions {Dto}", dto);
         }
         catch (Exception ex)
         {
@@ -111,7 +111,7 @@ public partial class SyncHubClient
 
     private async Task PushCharacterDataInternal(CharacterData character, List<UserData> visibleCharacters)
     {
-        Logger.LogInformation("Pushing character data for {hash} to {charas}", character.DataHash.Value, string.Join(", ", visibleCharacters.Select(c => c.AliasOrUID)));
+        Logger.LogInformation("[{Hash}] Pushing character data to {Charas}", character.DataHash.Value, string.Join(", ", visibleCharacters.Select(c => c.AliasOrUID)));
         StringBuilder sb = new();
         foreach (var kvp in character.FileReplacements.ToList())
         {
@@ -121,7 +121,7 @@ public partial class SyncHubClient
         {
             sb.AppendLine($"GlamourerData for {item.Key}: {!string.IsNullOrEmpty(item.Value)}");
         }
-        Logger.LogDebug("Chara data contained: {nl} {data}", Environment.NewLine, sb.ToString());
+        Logger.LogDebug("Chara data contained: {Nl} {Data}", Environment.NewLine, sb.ToString());
 
         CensusDataDto? censusDto = null;
         // if (_serverManager.SendCensusData && _lastCensus != null)
