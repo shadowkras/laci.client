@@ -45,7 +45,6 @@ public partial class IntroUi : WindowMediatorSubscriberBase
         _serverConfigurationManager = serverConfigurationManager;
         _dalamudUtilService = dalamudUtilService;
         IsOpen = false;
-        ShowCloseButton = false;
         RespectCloseHotkey = false;
 
         SizeConstraints = new WindowSizeConstraints()
@@ -222,10 +221,18 @@ public partial class IntroUi : WindowMediatorSubscriberBase
 
             UiSharedService.TextWrapped("Once you have registered you can connect to the service using the tools provided below.");
 
+            if (!_serverConfigurationManager.AnyServerRegistered)
+            {
+                _uiShared.DrawAddCustomService(defaultOpen: true);
+                return;
+            }
+
             int serverIdx = 0;
             var selectedServer = _serverConfigurationManager.GetServerByIndex(serverIdx);
+            if (selectedServer is null)
+                return;
 
-            using (var node = ImRaii.TreeNode("Advanced Options"))
+            using (var node = ImRaii.TreeNode("Advanced Options", ImGuiTreeNodeFlags.DefaultOpen))
             {
                 if (node)
                 {

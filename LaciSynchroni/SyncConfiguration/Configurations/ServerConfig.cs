@@ -15,8 +15,5 @@ public class ServerConfig : ISyncConfiguration
 
     public bool SendCensusData { get; set; } = false;
     public bool ShownCensusPopup { get; set; } = false;
-    public bool ShowServerPickerInMainMenu { get; set; } = false;
-    public bool EnableMultiConnect { get; set; } = true;
-
     public int Version { get; set; } = 2;
 }

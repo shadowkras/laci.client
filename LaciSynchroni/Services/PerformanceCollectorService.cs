@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.SyncConfiguration;
+﻿using LaciSynchroni.Services.ServerConfiguration;
+using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.Utils;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

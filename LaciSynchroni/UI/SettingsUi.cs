@@ -1223,10 +1223,11 @@ public class SettingsUi : WindowMediatorSubscriberBase
     private void DrawServerConfiguration()
     {
         _lastTab = "Service Settings";
+
         DrawMultiServerInterfaceTable();
         ImGui.Separator();
 
-        _uiShared.DrawAddCustomService();
+        _uiShared.DrawAddCustomService(defaultOpen: !_serverConfigurationManager.AnyServerRegistered);
         ImGui.Separator();
 
         DrawSpeedTest();
@@ -1234,10 +1235,18 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         ImGuiHelpers.ScaledDummy(new Vector2(10, 10));
 
+        if (!_serverConfigurationManager.AnyServerRegistered)
+            return;
+
         var selectedServer = _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex);
         bool useOauth = selectedServer.UseOAuth2;
 
+        if (selectedServer is null)
+            return;
+
         _uiShared.BigText($"Settings for {_lastSelectedServerName} service");
+
+
         ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
         var sendCensus = _serverConfigurationManager.SendCensusData;
         if (ImGui.Checkbox("Send Statistical Census Data", ref sendCensus))
@@ -1820,6 +1829,26 @@ public class SettingsUi : WindowMediatorSubscriberBase
             var serverList = _serverConfigurationManager.GetServerInfo();
             var rowHeight = ImGui.GetTextLineHeightWithSpacing();
 
+            if (serverList.Count == 0)
+            {
+                ImGui.TableNextRow();
+                ImGui.TableSetColumnIndex(0);
+
+                float tableWidth = ImGui.GetContentRegionAvail().X;
+
+                string msg = "No services registered";
+                float textWidth = ImGui.CalcTextSize(msg).X;
+
+                float offset = (tableWidth - textWidth) / 2.0f;
+                if (offset > 0)
+                    ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
+
+                ImGui.TextUnformatted(msg);
+
+                ImGui.EndTable();
+                return;
+            }
+
             foreach (var server in serverList)
             {
                 ImGui.TableNextRow();
@@ -1873,7 +1902,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawMultiServerConnectButton(int serverId, string serverName)
     {
-        bool isConnectingOrConnected = _apiController.IsServerConnected(serverId);
+        bool isConnectingOrConnected = _apiController.IsServerConnectingOrConnected(serverId);
         var color = UiSharedService.GetBoolColor(!isConnectingOrConnected);
         var connectedIcon = isConnectingOrConnected ? FontAwesomeIcon.Unlink : FontAwesomeIcon.Link;
 
@@ -1881,7 +1910,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         {
             if (_uiShared.IconButton(connectedIcon, serverId.ToString()))
             {
-                if (_apiController.IsServerConnected(serverId))
+                if (isConnectingOrConnected)
                 {
                     _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex).FullPause = true;
                     _serverConfigurationManager.Save();
@@ -1903,7 +1932,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawSpeedTest()
     {
-        using(ImRaii.Disabled(!_apiController.AnyServerConnected))
+        using (ImRaii.Disabled(!_apiController.AnyServerConnected))
         {
             ImGuiHelpers.ScaledDummy(5);
             using var tree = ImRaii.TreeNode($"Speed Test to {_lastSelectedServerName}");
@@ -1920,7 +1949,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                             _downloadServersTask = GetDownloadServerList(_lastSelectedServerIndex);
                         }
                     }
-                    if(!isServiceConnected)
+                    if (!isServiceConnected)
                     {
                         UiSharedService.AttachToolTip($"Connect to {_lastSelectedServerName} to run the speed test.");
                     }
@@ -2043,7 +2072,15 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawSettingsContent()
     {
-        _lastSelectedServerName = _apiController.GetServerNameByIndex(_lastSelectedServerIndex);
+        if (_serverConfigurationManager.AnyServerRegistered)
+        {
+            if (!_serverConfigurationManager.ServerIndexes.Contains(_lastSelectedServerIndex))
+            {
+                _lastSelectedServerIndex = _serverConfigurationManager.ServerIndexes.FirstOrDefault();
+            }
+
+            _lastSelectedServerName = _apiController.GetServerNameByIndex(_lastSelectedServerIndex);
+        }
 
         if (_apiController.IsServerConnected(_lastSelectedServerIndex))
         {

@@ -395,7 +395,7 @@ public class CompactUi : WindowMediatorSubscriberBase
                 UiSharedService.AttachToolTip("Click to copy");
             }
         }
-        else if (_apiController.GetServerState(serverId) is not (ServerState.Disconnected or ServerState.Offline))
+        else if (_apiController.GetServerStateForServer(serverId) is not (ServerState.Disconnected or ServerState.Offline))
         {
             var errorText = GetServerErrorByServer(serverId);
             var origTextSize = ImGui.CalcTextSize(errorText);
@@ -521,23 +521,12 @@ public class CompactUi : WindowMediatorSubscriberBase
                 UiSharedService.AttachToolTip("Click to copy");
             }
         }
-        else if(_apiController.IsServerConnecting(serverId))
-        {
-            UiSharedService.ColorTextWrapped("Connecting", ImGuiColors.DalamudYellow);
-            UiSharedService.AttachToolTip("The server is currently connecting. This may take a moment.");
-        }
-        else if (_apiController.IsServerAlive(serverId))
-        {
-            var serverError = GetServerErrorByServer(serverId);
-            UiSharedService.ColorTextWrapped("Offline", ImGuiColors.DalamudYellow);
-
-            if (!string.IsNullOrEmpty(serverError))
-                UiSharedService.AttachToolTip(serverError);
-        }
         else
         {
+            var serverState = _apiController.GetServerStateForServer(serverId).ToString();
+            var uidErrorColor = GetUidColorByServer(serverId);
             var serverError = GetServerErrorByServer(serverId);
-            UiSharedService.ColorTextWrapped("Offline", ImGuiColors.DalamudRed);
+            UiSharedService.ColorTextWrapped(serverState, uidErrorColor);
 
             if (!string.IsNullOrEmpty(serverError))
                 UiSharedService.AttachToolTip(serverError);
@@ -546,7 +535,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     private void DrawMultiServerConnectButton(int serverId, string serverName)
     {
-        bool isConnectingOrConnected = _apiController.IsServerConnected(serverId);
+        bool isConnectingOrConnected = _apiController.IsServerConnectingOrConnected(serverId);
         var color = UiSharedService.GetBoolColor(!isConnectingOrConnected);
         var connectedIcon = isConnectingOrConnected ? FontAwesomeIcon.Unlink : FontAwesomeIcon.Link;
 
@@ -555,7 +544,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             using var disabled = ImRaii.Disabled(_apiController.IsServerConnecting(serverId));
             if (_uiSharedService.IconButton(connectedIcon, serverId.ToString()))
             {
-                if (_apiController.IsServerConnected(serverId))
+                if (isConnectingOrConnected)
                 {
                     _serverConfigManager.GetServerByIndex(serverId).FullPause = true;
                     _serverConfigManager.Save();
@@ -593,7 +582,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     private string GetUidTextMultiServer(int serverId)
     {
-        return _apiController.GetServerState(serverId) switch
+        return _apiController.GetServerStateForServer(serverId) switch
         {
             ServerState.Connected => _apiController.GetUidByServer(serverId),
             _ => "Offline"
@@ -904,7 +893,7 @@ public class CompactUi : WindowMediatorSubscriberBase
     private string GetServerErrorByServer(int serverId)
     {
         var authFailureMessage = _apiController.GetAuthFailureMessageByServer(serverId);
-        return GetServerErrorByState(_apiController.GetServerState(serverId), authFailureMessage);
+        return GetServerErrorByState(_apiController.GetServerStateForServer(serverId), authFailureMessage);
     }
 
     private static string GetServerErrorByState(ServerState state, string? authFailureMessage)
@@ -933,7 +922,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     private Vector4 GetUidColorByServer(int serverId)
     {
-        return GetUidColorByState(_apiController.GetServerState(serverId));
+        return GetUidColorByState(_apiController.GetServerStateForServer(serverId));
     }
 
     private static Vector4 GetUidColorByState(ServerState state)

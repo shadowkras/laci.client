@@ -40,6 +40,8 @@ public class ServerConfigurationManager
         _syncMediator = syncMediator;
     }
 
+    public bool AnyServerRegistered => _serverConfigService.Current.ServerStorage.Count > 0;
+
     public IEnumerable<int> ServerIndexes => _serverConfigService.Current.ServerStorage.Select((_, i) => i);
 
     public bool AnyServerConfigured => _serverTagConfig.Current.ServerTagStorage.Count > 0;
@@ -175,7 +177,13 @@ public class ServerConfigurationManager
     
     public ServerStorage GetServerByIndex(int idx)
     {
-        return _serverConfigService.Current.ServerStorage[idx];
+        var storage = _serverConfigService.Current.ServerStorage;
+        if (idx >= 0 && idx < storage.Count)
+        {
+            return storage[idx];
+        }
+
+        throw new InvalidOperationException($"The client tried to obtain data for a server that is not registered: {idx}");
     }
 
     public string GetDiscordUserFromToken(ServerStorage server)
