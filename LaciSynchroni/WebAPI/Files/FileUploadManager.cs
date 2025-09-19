@@ -54,9 +54,10 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesDeleteAllFullPath(uri)).ConfigureAwait(false);
     }
 
-    public async Task<List<string>> UploadFiles(int serverIndex, List<string> hashesToUpload, IProgress<string> progress, CancellationToken ct)
+    public async Task<List<string>> UploadFiles(int serverIndex, string serverName, List<string> hashesToUpload, IProgress<string> progress, CancellationToken ct)
     {
-        Logger.LogDebug("Trying to upload files");
+
+        Logger.LogDebug("Trying to upload files to {ServerName}", serverName);
         var filesPresentLocally = hashesToUpload.Where(h => _fileDbManager.GetFileCacheByHash(h) != null).ToHashSet(StringComparer.Ordinal);
         var locallyMissingFiles = hashesToUpload.Except(filesPresentLocally, StringComparer.Ordinal).ToList();
         if (locallyMissingFiles.Any())
@@ -64,7 +65,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             return locallyMissingFiles;
         }
 
-        progress.Report($"Starting upload for {filesPresentLocally.Count} files");
+        progress.Report($"Starting upload to {serverName} for {filesPresentLocally.Count} files");
 
         var filesToUpload = await FilesSend(serverIndex, [.. filesPresentLocally], [], ct).ConfigureAwait(false);
 
@@ -77,12 +78,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         int i = 1;
         foreach (var file in filesToUpload)
         {
-            progress.Report($"Uploading file {i++}/{filesToUpload.Count}. Please wait until the upload is completed.");
-            Logger.LogDebug("[{hash}] Compressing", file);
+            progress.Report($"Uploading file {i++}/{filesToUpload.Count} to {serverName}. Please wait until the upload is completed.");
+            Logger.LogDebug("[{Hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, ct).ConfigureAwait(false);
-            Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
+            Logger.LogDebug("[{Hash}] Starting upload for {FilePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
             await uploadTask.ConfigureAwait(false);
-            uploadTask = UploadFile(serverIndex, data.Item2, file.Hash, false, ct);
+            uploadTask = UploadFile(serverIndex, serverName, data.Item2, file.Hash, false, ct);
             ct.ThrowIfCancellationRequested();
         }
 
@@ -91,23 +92,23 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         return [];
     }
 
-    public async Task<CharacterData> UploadFiles(ServerIndex serverIndex, CharacterData data, List<UserData> visiblePlayers)
+    public async Task<CharacterData> UploadFiles(ServerIndex serverIndex, string serverName, CharacterData data, List<UserData> visiblePlayers)
     {
         CancelUpload(serverIndex);
 
         var tokenSource = new CancellationTokenSource();
         if (!_cancellationTokens.TryAdd(serverIndex, tokenSource))
         {
-            Logger.LogError("[{ServerIndex} Failed to add cancellation token, token already present.", serverIndex);
+            Logger.LogError("[{ServerIndex} Failed to add cancellation token to {ServerName}, token already present.", serverIndex, serverName);
         }
         var uploadToken = tokenSource.Token;
-        Logger.LogDebug("Sending Character data {Hash} to service {Url}", data.DataHash.Value, _serverManager.GetServerByIndex(serverIndex).ServerUri);
+        Logger.LogDebug("[{Hash}] Sending Character data to service {Url}", data.DataHash.Value, _serverManager.GetServerByIndex(serverIndex).ServerUri);
 
         HashSet<string> unverifiedUploads = GetUnverifiedFiles(data);
         if (unverifiedUploads.Any())
         {
-            await UploadUnverifiedFiles(serverIndex, unverifiedUploads, visiblePlayers, uploadToken).ConfigureAwait(false);
-            Logger.LogInformation("Upload complete for {Hash}", data.DataHash.Value);
+            await UploadUnverifiedFiles(serverIndex, serverName, unverifiedUploads, visiblePlayers, uploadToken).ConfigureAwait(false);
+            Logger.LogInformation("[{Hash}] Upload complete for {ServerName}", data.DataHash.Value, serverName);
         }
 
         foreach (var kvp in data.FileReplacements)
@@ -142,7 +143,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
             if (verifiedTime < DateTime.UtcNow.Subtract(TimeSpan.FromMinutes(10)))
             {
-                Logger.LogTrace("Verifying {item}, last verified: {date}", item, verifiedTime);
+                Logger.LogTrace("Verifying {Item}, last verified: {Date}", item, verifiedTime);
                 unverifiedUploadHashes.Add(item);
             }
         }
@@ -150,10 +151,9 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         return unverifiedUploadHashes;
     }
 
-
-    private async Task UploadFile(int serverIndex, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
+    private async Task UploadFile(int serverIndex, string serverName, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
     {
-        Logger.LogInformation("[{hash}] Uploading {size}", fileHash, UiSharedService.ByteToString(compressedFile.Length));
+        Logger.LogInformation("[{Hash}] Uploading {Size} to {ServerName}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverName);
 
         if (uploadToken.IsCancellationRequested) return;
 
@@ -166,12 +166,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         {
             if (!_syncConfigService.Current.UseAlternativeFileUpload && ex is not OperationCanceledException)
             {
-                Logger.LogWarning(ex, "[{hash}] Error during file upload, trying alternative file upload", fileHash);
+                Logger.LogWarning(ex, "[{Hash}] Error during file upload, trying alternative file upload", fileHash);
                 await UploadFileStream(serverIndex, compressedFile, fileHash, munged: true, postProgress, uploadToken).ConfigureAwait(false);
             }
             else
             {
-                Logger.LogWarning(ex, "[{hash}] File upload cancelled", fileHash);
+                Logger.LogWarning(ex, "[{Hash}] File upload cancelled", fileHash);
             }
         }
     }
@@ -190,11 +190,13 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         {
             try
             {
-                CurrentUploads.Single(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerIndex == serverIndex).Transferred = prog.Uploaded;
+                var fileTransfer = CurrentUploads.FirstOrDefault(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerIndex == serverIndex);
+                if(fileTransfer is not null)
+                    fileTransfer.Transferred = prog.Uploaded;
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "[{hash}] Could not set upload progress", fileHash);
+                Logger.LogWarning(ex, "[{Hash}] Could not set upload progress", fileHash);
             }
         });
 
@@ -205,14 +207,14 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             response = await _orchestrator.SendRequestStreamAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesUploadFullPath(uri, fileHash), streamContent, uploadToken).ConfigureAwait(false);
         else
             response = await _orchestrator.SendRequestStreamAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesUploadMunged(uri, fileHash), streamContent, uploadToken).ConfigureAwait(false);
-        Logger.LogDebug("[{hash}] Upload Status: {status}", fileHash, response.StatusCode);
+        Logger.LogDebug("[{Hash}] Upload Status: {Status}", fileHash, response.StatusCode);
     }
 
-    private async Task UploadUnverifiedFiles(int serverIndex, HashSet<string> unverifiedUploadHashes, List<UserData> visiblePlayers, CancellationToken uploadToken)
+    private async Task UploadUnverifiedFiles(int serverIndex, string serverName, HashSet<string> unverifiedUploadHashes, List<UserData> visiblePlayers, CancellationToken uploadToken)
     {
         unverifiedUploadHashes = unverifiedUploadHashes.Where(h => _fileDbManager.GetFileCacheByHash(h) != null).ToHashSet(StringComparer.Ordinal);
 
-        Logger.LogDebug("Verifying {count} files", unverifiedUploadHashes.Count);
+        Logger.LogDebug("Verifying {Count} files", unverifiedUploadHashes.Count);
         var filesToUpload = await FilesSend(serverIndex, [.. unverifiedUploadHashes], visiblePlayers.Select(p => p.UID).ToList(), uploadToken).ConfigureAwait(false);
 
         foreach (var file in filesToUpload.Where(f => !f.IsForbidden).DistinctBy(f => f.Hash))
@@ -226,7 +228,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Tried to request file {hash} but file was not present", file.Hash);
+                Logger.LogWarning(ex, "Tried to request file {Hash} but file was not present", file.Hash);
             }
         }
 
@@ -246,14 +248,17 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         var totalSize = CurrentUploads.Sum(c => c.Total);
         Logger.LogDebug("Compressing and uploading files");
         Task uploadTask = Task.CompletedTask;
-        foreach (var file in CurrentUploads.Where(f => f.CanBeTransferred && !f.IsTransferred).ToList())
+        foreach (var file in CurrentUploads.Where(f => f.CanBeTransferred && !f.IsTransferred && f.ServerIndex == serverIndex).ToList())
         {
-            Logger.LogDebug("[{hash}] Compressing", file);
+            Logger.LogDebug("[{Hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
-            CurrentUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerIndex == serverIndex).Total = data.Item2.Length;
-            Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
+            var fileCurrentUpload = CurrentUploads.FirstOrDefault(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerIndex == serverIndex);
+            if (fileCurrentUpload is not null)
+                fileCurrentUpload.Total = data.Item2.Length;
+
+            Logger.LogDebug("[{Hash}] Starting upload for {FilePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
             await uploadTask.ConfigureAwait(false);
-            uploadTask = UploadFile(serverIndex, data.Item2, file.Hash, true, uploadToken);
+            uploadTask = UploadFile(serverIndex, serverName, data.Item2, file.Hash, true, uploadToken);
             uploadToken.ThrowIfCancellationRequested();
         }
 
@@ -262,7 +267,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             await uploadTask.ConfigureAwait(false);
 
             var compressedSize = CurrentUploads.Sum(c => c.Total);
-            Logger.LogDebug("Upload complete, compressed {size} to {compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
+            Logger.LogDebug("Upload complete, compressed {Size} to {Compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
         }
 
         foreach (var file in unverifiedUploadHashes.Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))

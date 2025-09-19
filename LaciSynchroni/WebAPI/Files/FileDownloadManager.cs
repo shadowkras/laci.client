@@ -6,6 +6,7 @@ using LaciSynchroni.Common.Routes;
 using LaciSynchroni.FileCache;
 using LaciSynchroni.PlayerData.Handlers;
 using LaciSynchroni.Services.Mediator;
+using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.WebAPI.Files.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
@@ -20,22 +21,25 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
     private readonly FileCacheManager _fileDbManager;
     private readonly FileTransferOrchestrator _orchestrator;
     private readonly List<ThrottledStream> _activeDownloadStreams;
+    private readonly ServerConfigurationManager _serverManager;
 
     public FileDownloadManager(ILogger<FileDownloadManager> logger, SyncMediator mediator,
         FileTransferOrchestrator orchestrator,
-        FileCacheManager fileCacheManager, FileCompactor fileCompactor) : base(logger, mediator)
+        FileCacheManager fileCacheManager, FileCompactor fileCompactor,
+        ServerConfigurationManager serverManager) : base(logger, mediator)
     {
         _downloadStatus = new Dictionary<string, FileDownloadStatus>(StringComparer.Ordinal);
         _orchestrator = orchestrator;
         _fileDbManager = fileCacheManager;
         _fileCompactor = fileCompactor;
+        _serverManager = serverManager;
         _activeDownloadStreams = [];
 
         Mediator.Subscribe<DownloadLimitChangedMessage>(this, (msg) =>
         {
             if (!_activeDownloadStreams.Any()) return;
             var newLimit = _orchestrator.DownloadLimitPerSlot();
-            Logger.LogTrace("Setting new Download Speed Limit to {newLimit}", newLimit);
+            Logger.LogTrace("Setting new Download Speed Limit to {NewLimit}", newLimit);
             foreach (var stream in _activeDownloadStreams)
             {
                 stream.BandwidthLimit = newLimit;
@@ -68,6 +72,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         Mediator.Publish(new HaltScanMessage(nameof(DownloadFiles)));
         try
         {
+            var serverName = _serverManager.GetServerNameByIndex(serverIndex);
+            Logger.LogDebug("Downloading files for {ServerName}", serverName);
+
             await DownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct).ConfigureAwait(false);
         }
         catch
@@ -138,7 +145,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
     private async Task DownloadAndMungeFileHttpClient(int serverIndex, string downloadGroup, Guid requestId, List<DownloadFileTransfer> fileTransfer, string tempPath, IProgress<long> progress, CancellationToken ct)
     {
-        Logger.LogDebug("GUID {requestId} on server {uri} for files {files}", requestId, fileTransfer[0].DownloadUri, string.Join(", ", fileTransfer.Select(c => c.Hash).ToList()));
+        Logger.LogDebug("GUID {RequestId} on server {Uri} for files {Files}", requestId, fileTransfer[0].DownloadUri, string.Join(", ", fileTransfer.Select(c => c.Hash).ToList()));
 
         await WaitForDownloadReady(serverIndex, fileTransfer, requestId, ct).ConfigureAwait(false);
 
@@ -147,7 +154,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         HttpResponseMessage response = null!;
         var requestUrl = FilesRoutes.CacheGetFullPath(fileTransfer[0].DownloadUri, requestId);
 
-        Logger.LogDebug("Downloading {requestUrl} for request {id}", requestUrl, requestId);
+        Logger.LogDebug("Downloading {RequestUrl} for request {Id}", requestUrl, requestId);
         try
         {
             response = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, requestUrl, ct, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
@@ -155,7 +162,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         }
         catch (HttpRequestException ex)
         {
-            Logger.LogWarning(ex, "Error during download of {requestUrl}, HttpStatusCode: {code}", requestUrl, ex.StatusCode);
+            Logger.LogWarning(ex, "Error during download of {RequestUrl}, HttpStatusCode: {Code}", requestUrl, ex.StatusCode);
             if (ex.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Unauthorized)
             {
                 throw new InvalidDataException($"Http error {ex.StatusCode} (cancelled: {ct.IsCancellationRequested}): {requestUrl}", ex);
@@ -173,7 +180,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
                 var bytesRead = 0;
                 var limit = _orchestrator.DownloadLimitPerSlot();
-                Logger.LogTrace("Starting Download of {id} with a speed limit of {limit} to {tempPath}", requestId, limit, tempPath);
+                Logger.LogTrace("Starting Download of {Id} with a speed limit of {Limit} to {TempPath}", requestId, limit, tempPath);
                 stream = new ThrottledStream(await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false), limit);
                 _activeDownloadStreams.Add(stream);
                 while ((bytesRead = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
@@ -187,14 +194,14 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                     progress.Report(bytesRead);
                 }
 
-                Logger.LogDebug("{requestUrl} downloaded to {tempPath}", requestUrl, tempPath);
+                Logger.LogDebug("{RequestUrl} downloaded to {TempPath}", requestUrl, tempPath);
             }
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             try
             {
@@ -219,14 +226,14 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
     public async Task<List<DownloadFileTransfer>> InitiateDownloadList(int serverIndex, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
     {
-        Logger.LogDebug("Download start: {id}", gameObjectHandler.Name);
+        Logger.LogDebug("Download start: {Id}", gameObjectHandler.Name);
 
         List<DownloadFileDto> downloadFileInfoFromService =
         [
             .. await FilesGetSizes(serverIndex, fileReplacement.Select(f => f.Hash).Distinct(StringComparer.Ordinal).ToList(), ct).ConfigureAwait(false),
         ];
 
-        Logger.LogDebug("Files with size 0 or less: {files}", string.Join(", ", downloadFileInfoFromService.Where(f => f.Size <= 0).Select(f => f.Hash)));
+        Logger.LogDebug("Files with size 0 or less: {Files}", string.Join(", ", downloadFileInfoFromService.Where(f => f.Size <= 0).Select(f => f.Hash)));
 
         foreach (var dto in downloadFileInfoFromService.Where(c => c.IsForbidden))
         {
@@ -270,12 +277,12 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             // let server predownload files
             var requestIdResponse = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Post, FilesRoutes.RequestEnqueueFullPath(fileGroup.First().DownloadUri),
                 fileGroup.Select(c => c.Hash), token).ConfigureAwait(false);
-            Logger.LogDebug("Sent request for {n} files on server {uri} with result {result}", fileGroup.Count(), fileGroup.First().DownloadUri,
+            Logger.LogDebug("Sent request for {N} files on server {Uri} with result {Result}", fileGroup.Count(), fileGroup.First().DownloadUri,
                 await requestIdResponse.Content.ReadAsStringAsync(token).ConfigureAwait(false));
 
             Guid requestId = Guid.Parse((await requestIdResponse.Content.ReadAsStringAsync().ConfigureAwait(false)).Trim('"'));
 
-            Logger.LogDebug("GUID {requestId} for {n} files on server {uri}", requestId, fileGroup.Count(), fileGroup.First().DownloadUri);
+            Logger.LogDebug("GUID {RequestId} for {N} files on server {Uri}", requestId, fileGroup.Count(), fileGroup.First().DownloadUri);
 
             var blockFile = _fileDbManager.GetCacheFilePath(requestId.ToString("N"), "blk");
             FileInfo fi = new(blockFile);
@@ -300,13 +307,13 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             }
             catch (OperationCanceledException)
             {
-                Logger.LogDebug("{dlName}: Detected cancellation of download, partially extracting files for {id}", fi.Name, gameObjectHandler);
+                Logger.LogDebug("{DlName}: Detected cancellation of download, partially extracting files for {Id}", fi.Name, gameObjectHandler);
             }
             catch (Exception ex)
             {
                 _orchestrator.ReleaseDownloadSlot();
                 File.Delete(blockFile);
-                Logger.LogError(ex, "{dlName}: Error during download of {id}", fi.Name, requestId);
+                Logger.LogError(ex, "{DlName}: Error during download of {Id}", fi.Name, requestId);
                 ClearDownload();
                 return;
             }
@@ -328,7 +335,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                     {
                         var fileExtension = fileReplacement.First(f => string.Equals(f.Hash, fileHash, StringComparison.OrdinalIgnoreCase)).GamePaths[0].Split(".")[^1];
                         var filePath = _fileDbManager.GetCacheFilePath(fileHash, fileExtension);
-                        Logger.LogDebug("{dlName}: Decompressing {file}:{le} => {dest}", fi.Name, fileHash, fileLengthBytes, filePath);
+                        Logger.LogDebug("{DlName}: Decompressing {File}:{Le} => {Dest}", fi.Name, fileHash, fileLengthBytes, filePath);
 
                         byte[] compressedFileContent = new byte[fileLengthBytes];
                         var readBytes = await fileBlockStream.ReadAsync(compressedFileContent, CancellationToken.None).ConfigureAwait(false);
@@ -345,21 +352,21 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                     }
                     catch (EndOfStreamException)
                     {
-                        Logger.LogWarning("{dlName}: Failure to extract file {fileHash}, stream ended prematurely", fi.Name, fileHash);
+                        Logger.LogWarning("{DlName}: Failure to extract file {FileHash}, stream ended prematurely", fi.Name, fileHash);
                     }
                     catch (Exception e)
                     {
-                        Logger.LogWarning(e, "{dlName}: Error during decompression", fi.Name);
+                        Logger.LogWarning(e, "{DlName}: Error during decompression", fi.Name);
                     }
                 }
             }
             catch (EndOfStreamException)
             {
-                Logger.LogDebug("{dlName}: Failure to extract file header data, stream ended", fi.Name);
+                Logger.LogDebug("{DlName}: Failure to extract file header data, stream ended", fi.Name);
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "{dlName}: Error during block file read", fi.Name);
+                Logger.LogError(ex, "{DlName}: Error during block file read", fi.Name);
             }
             finally
             {
@@ -370,7 +377,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             }
         }).ConfigureAwait(false);
 
-        Logger.LogDebug("Download end: {id}", gameObjectHandler);
+        Logger.LogDebug("Download end: {Id}", gameObjectHandler);
 
         ClearDownload();
     }
@@ -405,7 +412,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             var entry = _fileDbManager.CreateCacheEntry(filePath);
             if (entry != null && !string.Equals(entry.Hash, fileHash, StringComparison.OrdinalIgnoreCase))
             {
-                Logger.LogError("Hash mismatch after extracting, got {hash}, expected {expectedHash}, deleting file", entry.Hash, fileHash);
+                Logger.LogError("Hash mismatch after extracting, got {Hash}, expected {ExpectedHash}, deleting file", entry.Hash, fileHash);
                 File.Delete(filePath);
                 _fileDbManager.RemoveHashedFile(entry.Hash, entry.PrefixedFilePath);
             }
@@ -449,7 +456,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             localTimeoutCts.Dispose();
             composite.Dispose();
 
-            Logger.LogDebug("Download {requestId} ready", requestId);
+            Logger.LogDebug("Download {RequestId} ready", requestId);
         }
         catch (TaskCanceledException)
         {
