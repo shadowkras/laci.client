@@ -100,11 +100,13 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     /// The server configuration we are using
     /// </summary>
     private ServerStorage ServerToUse => _serverConfigurationManager.GetServerByIndex(ServerIndex);
-    
+
+
     /// <summary>
     /// Name of the server we are connected to, or "Unknown service" if not connected
     /// </summary>
-    private readonly string _serverName;
+    private string ServerName => ServerToUse?.ServerName ?? "Unknown service";
+   
 
     public SyncHubClient(int serverIndex,
         ServerConfigurationManager serverConfigurationManager, PairManager pairManager,
@@ -121,8 +123,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _pairManager = pairManager;
         _dalamudUtil = dalamudUtilService;
         _serverConfigurationManager = serverConfigurationManager;
-        _serverName = ServerToUse?.ServerName ?? "Unknown service";
-        _logger = loggerFactory.CreateLogger($"{nameof(SyncHubClient)}-{_serverName}");
+        _logger = loggerFactory.CreateLogger($"{nameof(SyncHubClient)}-{ServerName}");
 
         Mediator.Subscribe<DalamudLoginMessage>(this, msg =>
         {
@@ -189,7 +190,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         {
             // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
             // Also set to "Connecting" at this point
-            Logger.LogDebug("Already connected to {ServerName}, stopping connection", _serverName);
+            Logger.LogDebug("Already connected to {ServerName}, stopping connection", ServerName);
             await StopConnectionAsync(ServerState.Connecting).ConfigureAwait(false);
         }
 
@@ -200,9 +201,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        Logger.LogInformation("Recreating Connection to {ServerName}", _serverName);
+        Logger.LogInformation("Recreating Connection to {ServerName}", ServerName);
         Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Informational,
-            $"Starting Connection to {_serverName}")));
+            $"Starting Connection to {ServerName}")));
 
         // If we have an old token, we clear it out so old tokens won't accidentally cancel the fresh connect attempt
         // This will also cancel out all ongoing connection attempts for this server, if any are still pending
@@ -234,12 +235,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             {
                 // cancellation token was triggered, either through user input or an error
                 // if this is the case, we just log it and leave. Connection wasn't established set, nothing to erase
-                _logger.LogWarning("Connection to {ServerName} attempt cancelled", _serverName);
+                _logger.LogWarning("Connection to {ServerName} attempt cancelled", ServerName);
                 return;
             }
             catch (InvalidOperationException ex)
             {
-                Logger.LogWarning(ex, "InvalidOperationException on connection to {ServerName}", _serverName);
+                Logger.LogWarning(ex, "InvalidOperationException on connection to {ServerName}", ServerName);
                 await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
                 return;
             }
@@ -247,7 +248,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             {
                 var statusCode = ex.StatusCode ?? HttpStatusCode.ServiceUnavailable;
                 _logger.LogWarning(ex, "HttpRequestException on connection to {ServerName} ({ServerHubUri}) (StatusCode {StatusCode}) ",
-                    _serverName, serverHubUri, statusCode);
+                    ServerName, serverHubUri, statusCode);
 
                 if (ex.StatusCode is HttpStatusCode.Unauthorized)
                 {
@@ -261,13 +262,13 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Exception on connection to {ServerName} ({ServerHubUri})", _serverName, ServerToUse.ServerHubUri);
+                Logger.LogWarning(ex, "Exception on connection to {ServerName} ({ServerHubUri})", ServerName, ServerToUse.ServerHubUri);
                 backoffSeconds = await HandleReconnectDelay(LogLevel.Critical, ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);
             }
         }
 
         if (connectionCancellationToken.IsCancellationRequested)
-            Logger.LogInformation("Reconnect loop to {ServerName} exited due to cancellation token.", _serverName);
+            Logger.LogInformation("Reconnect loop to {ServerName} exited due to cancellation token.", ServerName);
     }
 
     /// <summary>
@@ -299,7 +300,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private async Task<int> HandleReconnectDelay(LogLevel loglevel, string reason, int backoffSeconds, CancellationToken cancelToken)
     {
         double delay = GetRandomReconnectDelay(backoffSeconds);
-        Logger.Log(loglevel, "Connection to {ServerName} failed ({Reason}), retrying in {Delay} seconds", _serverName, reason, (int)delay);
+        Logger.Log(loglevel, "Connection to {ServerName} failed ({Reason}), retrying in {Delay} seconds", ServerName, reason, (int)delay);
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(delay), cancelToken).ConfigureAwait(false);
@@ -362,13 +363,13 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
         {
             await StopConnectionAsync(ServerState.VersionMisMatch).ConfigureAwait(false);
-           Logger.LogWarning("Client version mismatch with service {ServerName}: {ServerVersion}", _serverName, ConnectionDto.ServerVersion);
+           Logger.LogWarning("Client version mismatch with service {ServerName}: {ServerVersion}", ServerName, ConnectionDto.ServerVersion);
         }
         // Also trigger some warnings
         TriggerConnectionWarnings(ConnectionDto);
 
         ServerState = ServerState.Connected;
-        _logger.LogInformation("Connection to {ServerName} successful.", _serverName);
+        _logger.LogInformation("Connection to {ServerName} successful.", ServerName);
 
         await LoadInitialPairsAsync().ConfigureAwait(false);
         await LoadOnlinePairsAsync().ConfigureAwait(false);
@@ -407,14 +408,14 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             // We could try to emulate the /negotiate, but for now, this should work just as well
             if (responseHub.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.OK or HttpStatusCode.NoContent)
             {
-                Logger.LogInformation("{HubUri}: Valid hub address found for {ServerName}", hubToCheck, _serverName);
+                Logger.LogInformation("{HubUri}: Valid hub address found for {ServerName}", hubToCheck, ServerName);
                 return hubToCheck;
             }
 
-            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}", hubToCheck, _serverName);
+            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}", hubToCheck, ServerName);
         }
 
-        Logger.LogWarning("Unable to find any hub to connect to {ServerName}, aborting connection attempt.", _serverName);
+        Logger.LogWarning("Unable to find any hub to connect to {ServerName}, aborting connection attempt.", ServerName);
         return null;
     }
 
@@ -432,7 +433,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         catch (SyncAuthFailureException ex)
         {
             AuthFailureMessage = ex.Reason;
-            throw new HttpRequestException($"Error during authentication to {_serverName}", ex, HttpStatusCode.Unauthorized);
+            throw new HttpRequestException($"Error during authentication to {ServerName}", ex, HttpStatusCode.Unauthorized);
         }
     }
 
@@ -444,11 +445,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         ServerState = ServerState.Disconnecting;
 
-        _logger.LogInformation("Stopping existing connection to {ServerName}", _serverName);
+        _logger.LogInformation("Stopping existing connection to {ServerName}", ServerName);
 
         if (_connection != null && !_isDisposed)
         {
-            _logger.LogDebug("Disposing current HubConnection to {ServerName}", _serverName);
+            _logger.LogDebug("Disposing current HubConnection to {ServerName}", ServerName);
 
             _connection.Closed -= ConnectionOnClosed;
             _connection.Reconnecting -= ConnectionOnReconnecting;
@@ -460,14 +461,14 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             _isDisposed = true;
 
             Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Informational,
-                $"Stopping existing connection to {_serverName}")));
+                $"Stopping existing connection to {ServerName}")));
             _initialized = false;
             _healthCheckTokenSource?.Cancel();
             Mediator.Publish(new DisconnectedMessage(ServerIndex));
             _connection = null;
             ConnectionDto = null;
 
-            Logger.LogDebug("HubConnection to {ServerName} disposed", _serverName);
+            Logger.LogDebug("HubConnection to {ServerName} disposed", ServerName);
         }
 
         ServerState = state;
@@ -497,7 +498,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             transportType = HttpTransportType.ServerSentEvents | HttpTransportType.LongPolling;
         }
 
-        _logger.LogDebug("Building new HubConnection to {ServerName} ({ServerHubUrl}) using transport {Transport}", _serverName, serverHubUri, transportType);
+        _logger.LogDebug("Building new HubConnection to {ServerName} ({ServerHubUrl}) using transport {Transport}", ServerName, serverHubUri, transportType);
 
         _connection = new HubConnectionBuilder()
             .WithUrl(serverHubUri, options =>
@@ -551,11 +552,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         ServerState = ServerState.Offline;
         if (arg != null)
         {
-            _logger.LogWarning(arg, "Connection to {ServerName} closed", _serverName);
+            _logger.LogWarning(arg, "Connection to {ServerName} closed", ServerName);
         }
         else
         {
-            _logger.LogInformation("Connection to {ServerName} closed", _serverName);
+            _logger.LogInformation("Connection to {ServerName} closed", ServerName);
         }
 
         return Task.CompletedTask;
@@ -585,7 +586,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
         catch (Exception ex)
         {
-            Logger.LogCritical(ex, "Failure to obtain data from {ServerName} after reconnection", _serverName);
+            Logger.LogCritical(ex, "Failure to obtain data from {ServerName} after reconnection", ServerName);
             await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
         }
     }
@@ -599,9 +600,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _doNotNotifyOnNextInfo = true;
         _healthCheckTokenSource?.Cancel();
         ServerState = ServerState.Reconnecting;
-        Logger.LogWarning(arg, "Connection to {ServerName} closed... Reconnecting", _serverName);
+        Logger.LogWarning(arg, "Connection to {ServerName} closed... Reconnecting", ServerName);
         Mediator.Publish(new EventMessage(new Event(nameof(SyncHubClient), EventSeverity.Warning,
-            $"Connection interrupted, reconnecting to {_serverName}")));
+            $"Connection interrupted, reconnecting to {ServerName}")));
         return Task.CompletedTask;
     }
 
@@ -619,7 +620,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     public async Task<ConnectionDto> GetConnectionDtoAsync(bool publishConnected)
     {
         if (_connection is null)
-            throw new InvalidOperationException($"Not connected to server {_serverName}");
+            throw new InvalidOperationException($"Not connected to server {ServerName}");
 
         var dto = await _connection!.InvokeAsync<ConnectionDto>(nameof(GetConnectionDto)).ConfigureAwait(false);
         if (publishConnected)
@@ -684,7 +685,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(30), cts.Token).ConfigureAwait(false);
-                Logger.LogDebug("Checking Client Health State to {ServerName}", _serverName);
+                Logger.LogDebug("Checking Client Health State to {ServerName}", ServerName);
 
                 bool requireReconnect = await RefreshTokenAsync(cts.Token).ConfigureAwait(false);
                 if (requireReconnect)
@@ -737,7 +738,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             var token = await _multiConnectTokenService.GetOrUpdateToken(ServerIndex, ct).ConfigureAwait(false);
             if (!string.Equals(token, _lastUsedToken, StringComparison.Ordinal))
             {
-                Logger.LogDebug("Reconnecting to {ServerName} due to updated token", _serverName);
+                Logger.LogDebug("Reconnecting to {ServerName} due to updated token", ServerName);
 
                 _doNotNotifyOnNextInfo = true;
                 await CreateConnectionsAsync().ConfigureAwait(false);
@@ -752,7 +753,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Could not refresh token from {ServerName}, forcing reconnect", _serverName);
+            Logger.LogWarning(ex, "Could not refresh token from {ServerName}, forcing reconnect", ServerName);
             _doNotNotifyOnNextInfo = true;
             await CreateConnectionsAsync().ConfigureAwait(false);
             requireReconnect = true;
@@ -819,7 +820,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Error stopping connection to {ServerName}.", _serverName);
+            Logger.LogWarning(ex, "Error stopping connection to {ServerName}.", ServerName);
         }
     }
 
@@ -854,12 +855,12 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             .Find(f => string.Equals(f.CharacterName, characterName, StringComparison.Ordinal) && f.WorldId == worldId);
         if (auth?.AutoLogin ?? false)
         {
-            Logger.LogInformation("Logging into {ServerName} as {CharaName}", _serverName, characterName);
+            Logger.LogInformation("Logging into {ServerName} as {CharaName}", ServerName, characterName);
             await CreateConnectionsAsync().ConfigureAwait(false);
         }
         else
         {
-            Logger.LogInformation("Could not login into {ServerName} as {CharaName}, auto login is disabled", _serverName, characterName);
+            Logger.LogInformation("Could not login into {ServerName} as {CharaName}, auto login is disabled", ServerName, characterName);
             await StopConnectionAsync(ServerState.NoAutoLogon).ConfigureAwait(false);
         }
     }
@@ -894,7 +895,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 var onlinePairs = _pairManager.GetOnlineUserPairs(ServerIndex);
                 if (!onlinePairs.Any(p => p.UserPair != null && p.UserData.UID.Equals(userData.UID)))
                 {
-                    Logger.LogInformation("User {AliasOrUID} is not online on server {ServerName}, cannot cycle pause", userData.AliasOrUID, _serverName);
+                    Logger.LogInformation("User {AliasOrUID} is not online on server {ServerName}, cannot cycle pause", userData.AliasOrUID, ServerName);
                     return;
                 }
 
@@ -916,11 +917,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
                 perm.SetPaused(paused: false);
                 await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
-                Logger.LogInformation("Cycle pause state for User {AliasOrUID} on server {ServerName} was successful", userData.AliasOrUID, _serverName);
+                Logger.LogInformation("Cycle pause state for User {AliasOrUID} on server {ServerName} was successful", userData.AliasOrUID, ServerName);
             }
             catch (OperationCanceledException)
             {
-                Logger.LogWarning("CyclePauseAsync timed out for user {UserData} on {ServerName}", userData, _serverName);
+                Logger.LogWarning("CyclePauseAsync timed out for user {UserData} on {ServerName}", userData, ServerName);
             }
         }, Logger, cts.Token);
 
