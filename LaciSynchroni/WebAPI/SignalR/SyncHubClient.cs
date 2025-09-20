@@ -41,6 +41,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private readonly DalamudUtilService _dalamudUtil;
     private readonly ServerConfigurationManager _serverConfigurationManager;
 
+    private readonly Random _random = new Random();
+    private const int _baseReconnectSeconds = 5;
+    private const int _maxReconnectBackoff = 60;
+    private const double _jitterReconnectFactor = 0.2;
+
     /// <summary>
     /// SignalR hub connection, one is maintained per server
     /// </summary>
@@ -172,6 +177,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private async Task LoopConnections(Uri serverHubUri, CancellationToken connectionCancellationToken)
     {
+        int backoffSeconds = _baseReconnectSeconds;
+
         while (ServerToUse is not null &&
                ServerState is not ServerState.Connected &&
                !connectionCancellationToken.IsCancellationRequested)
@@ -183,6 +190,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
                 await TryConnect(serverHubUri, connectionCancellationToken).ConfigureAwait(false);
                 AuthFailureMessage = string.Empty;
+                backoffSeconds = _baseReconnectSeconds;
                 return;
             }
             catch (OperationCanceledException)
@@ -212,18 +220,51 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 }
 
                 ServerState = ServerState.Reconnecting;
-                _logger.LogInformation("Failed to establish connection to {ServerName}, retrying", ServerName);
-                await Task.Delay(TimeSpan.FromSeconds(new Random().Next(5, 20)), connectionCancellationToken).ConfigureAwait(false);
+                backoffSeconds = await HandleReconnectDelay(ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "Exception on connection to {ServerName} ({ServerHubUri})", ServerName, ServerToUse.ServerHubUri);
-                await Task.Delay(TimeSpan.FromSeconds(new Random().Next(5, 20)), connectionCancellationToken).ConfigureAwait(false);
+                backoffSeconds = await HandleReconnectDelay(LogLevel.Critical, ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);                
             }
         }
 
         if (connectionCancellationToken.IsCancellationRequested)
             Logger.LogInformation("Reconnect loop to {ServerName} exited due to cancellation token.", ServerName);
+    }
+
+    private async Task<int> HandleReconnectDelay(string reason, int backoffSeconds, CancellationToken cancelToken)
+    {
+        return await HandleReconnectDelay(LogLevel.Information, reason, backoffSeconds, cancelToken).ConfigureAwait(false);
+    }
+
+    private async Task<int> HandleReconnectDelay(LogLevel loglevel, string reason, int backoffSeconds, CancellationToken cancelToken)
+    {
+        double delay = GetRandomReconnectDelay(backoffSeconds);
+        Logger.Log(loglevel, "Connection to {ServerName} failed ({Reason}), retrying in {Delay} seconds", ServerName, reason, (int)delay);
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(delay), cancelToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // cancellation by token, exit silently
+            return backoffSeconds;
+        }
+
+        return GetIncreasedReconnectBackoff(backoffSeconds);
+    }
+
+    private double GetRandomReconnectDelay(int backoffSeconds)
+    {
+        double jitter = (_random.NextDouble() * 2 - 1) * _jitterReconnectFactor;
+        double delay = backoffSeconds * (1.0 + jitter);
+        return Math.Min(delay, _maxReconnectBackoff);
+    }
+
+    private static int GetIncreasedReconnectBackoff(int backoffSeconds)
+    {
+        return Math.Min(backoffSeconds * 2, _maxReconnectBackoff);
     }
 
     private CancellationToken CreateConnectToken()
