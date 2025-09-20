@@ -173,20 +173,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             var message = new ServerBasedUserKey(user, serverIndex);
             Mediator.Publish(new ClearProfileDataMessage(message));
             pair.MarkOffline();
-            // When we disconnect this pair, we might have some leftovers we need to redraw
-            // This happens when the same character is connected through more than one service. In these scenarios, the pair exists
-            // twice. Once for each server
-            // When one of the pairs gets disposed, the other is not aware of the disconnect. A redraw will not be triggered. As a
-            // result, the other pair remains unchanged in the vanilla state
-            // To fix this, we find all other pairs with the same name and redraw them if visible.
-             _allClientPairs
-                .Where(valuePair => string.Equals(valuePair.Value.PlayerName, removedPairName, StringComparison.OrdinalIgnoreCase))
-                .Where(valuePair => valuePair.Value.IsVisible)
-                .Where(valuePair => valuePair.Value != pair)
-                .Select(valuePair => valuePair.Value)
-                .ToList()
-                .ForEach(p => p.ApplyLastReceivedData(true));
-          
+            RedrawStillVisiblePairs(pair, removedPairName);
         }
 
         RecreateLazy();
@@ -505,6 +492,30 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         {
             pair.ApplyLastReceivedData(forced: true);
         }
+    }
+
+    /// <summary>
+    /// Whenever a pair disconnects (either because of a disconnect on the other side or because of a pause), that pair might
+    /// still be visible through another connected server.
+    /// This happens in scenarios where the the disconnect/pause only happens through one server, but the other server still being available.
+    /// In cases like this, more than one pair exists for the same player, because one pair exists per server.
+    ///
+    /// The PairManager will dispose the pair that just went offline. The other pair, however, is not aware of it. So we
+    /// need to figure out if any of these pairs are left, and then redraw them by reapplying last data. 
+    /// </summary>
+    /// <param name="removedPair">The instance of the pair that got removed</param>
+    /// <param name="removedPlayerName">The name of the remvoed pair. Don't remove this, the pair has to be disposed
+    /// before we try to redraw other pairs, so the name will not be available anymore!
+    /// </param>
+    private void RedrawStillVisiblePairs(Pair removedPair, string? removedPlayerName)
+    {
+        _allClientPairs
+            .Where(valuePair => string.Equals(valuePair.Value.PlayerName, removedPlayerName, StringComparison.OrdinalIgnoreCase))
+            .Where(valuePair => removedPair != valuePair.Value)
+            .Where(valuePair => valuePair.Value.IsVisible)
+            .Select(valuePair => valuePair.Value)
+            .ToList()
+            .ForEach(p => p.ApplyLastReceivedData(true));
     }
 
     private void RecreateLazy()
