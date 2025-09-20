@@ -22,7 +22,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
     private readonly ConcurrentDictionary<JwtIdentifier, string> _tokenCache = new();
 
     private ServerStorage ServerToUse => _serverManager.GetServerByIndex(_serverIndex);
-    private readonly string _serverName;
+    private string ServerName => ServerToUse?.ServerName ?? "Unknown service";
 
     public ServerHubTokenProvider(ILogger<ServerHubTokenProvider> logger, int serverIndex,
         ServerConfigurationManager serverManager, DalamudUtilService dalamudUtil, SyncMediator syncMediator,
@@ -32,7 +32,6 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
         _dalamudUtil = dalamudUtil;
         _serverManager = serverManager;
         _serverIndex = serverIndex;
-        _serverName = ServerToUse?.ServerName ?? "Unknown service";
         Mediator = syncMediator;
         _httpClient = httpClient;
         Mediator.Subscribe<DalamudLogoutMessage>(this, (_) =>
@@ -66,7 +65,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
         {
             if (!isRenewal)
             {
-                _logger.LogDebug("GetNewToken: Requesting token for {ServerName}", _serverName);
+                _logger.LogDebug("GetNewToken: Requesting token for {ServerName}", ServerName);
 
                 if (!ServerToUse.UseOAuth2)
                 {
@@ -75,7 +74,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                         .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
                     var secretKey = _serverManager.GetSecretKey(out _, _serverIndex)!;
                     var auth = secretKey.GetHash256();
-                    _logger.LogInformation("Sending SecretKey Request to server {ServerName} with auth {Auth}", _serverName,
+                    _logger.LogInformation("Sending SecretKey Request to server {ServerName} with auth {Auth}", ServerName,
                         string.Join("", identifier.SecretKeyOrOAuth.Take(10)));
                     result = await _httpClient.PostAsync(tokenUri, new FormUrlEncodedContent(
                     [
@@ -96,14 +95,14 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                     ]);
                     request.Headers.Authorization =
                         new AuthenticationHeaderValue("Bearer", identifier.SecretKeyOrOAuth);
-                    _logger.LogInformation("Sending OAuth Request to server {ServerName} with auth {Auth}", _serverName,
+                    _logger.LogInformation("Sending OAuth Request to server {ServerName} with auth {Auth}", ServerName,
                         string.Join("", identifier.SecretKeyOrOAuth.Take(10)));
                     result = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
                 }
             }
             else
             {
-                _logger.LogDebug("GetNewToken: Renewal for {ServerName}", _serverName);
+                _logger.LogDebug("GetNewToken: Renewal for {ServerName}", ServerName);
 
                 tokenUri = AuthRoutes.RenewTokenFullPath(new Uri(ServerToUse.ServerUri
                     .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
@@ -121,16 +120,16 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
         {
             _tokenCache.TryRemove(identifier, out _);
 
-            _logger.LogError(ex, "GetNewToken: Failure to get token from {ServerName}", _serverName);
+            _logger.LogError(ex, "GetNewToken: Failure to get token from {ServerName}", ServerName);
 
             if (ex.StatusCode == HttpStatusCode.Unauthorized)
             {
                 if (isRenewal)
-                    Mediator.Publish(new NotificationMessage($"Error refreshing token from {_serverName}",
+                    Mediator.Publish(new NotificationMessage($"Error refreshing token from {ServerName}",
                         $"Your authentication token could not be renewed. Try reconnecting to a {_dalamudUtil.GetPluginName()} server manually.",
                         NotificationType.Error));
                 else
-                    Mediator.Publish(new NotificationMessage($"Error generating token from {_serverName}",
+                    Mediator.Publish(new NotificationMessage($"Error generating token from {ServerName}",
                         $"Your authentication token could not be generated. Check {_dalamudUtil.GetPluginName()} Main UI ({CommandManagerService.CommandName} in chat) to see the error message.",
                         NotificationType.Error));
                 Mediator.Publish(new DisconnectedMessage(_serverIndex));
@@ -191,7 +190,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             else
             {
                 var secretKey = _serverManager.GetSecretKey(out _, _serverIndex) ??
-                                throw new InvalidOperationException($"Requested SecretKey from {_serverName} but received null");
+                                throw new InvalidOperationException($"Requested SecretKey from {ServerName} but received null");
 
                 jwtIdentifier = new(ServerToUse.ServerUri,
                     playerIdentifier,
@@ -248,16 +247,16 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             }
 
             _logger.LogDebug(
-                "GetOrUpdate: Cached token for {ServerName} requires renewal, token valid to: {Valid}, UtcTime is {UtcTime}", _serverName,
+                "GetOrUpdate: Cached token for {ServerName} requires renewal, token valid to: {Valid}, UtcTime is {UtcTime}", ServerName,
                 jwt.ValidTo, DateTime.UtcNow);
             renewal = true;
         }
         else
         {
-            _logger.LogDebug("GetOrUpdate: Did not find token for {ServerName} in cache, requesting a new one", _serverName);
+            _logger.LogDebug("GetOrUpdate: Did not find token for {ServerName} in cache, requesting a new one", ServerName);
         }
 
-        _logger.LogTrace("GetOrUpdate: Getting new token for {ServerName}", _serverName);
+        _logger.LogTrace("GetOrUpdate: Getting new token for {ServerName}", ServerName);
         return await GetNewToken(renewal, jwtIdentifier, ct).ConfigureAwait(false);
     }
 
@@ -282,13 +281,13 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
         HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, tokenUri.ToString());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", oauth2.Value.OAuthToken);
-        _logger.LogInformation("Sending Request to server {ServerName} with auth {Auth}", _serverName,
+        _logger.LogInformation("Sending Request to server {ServerName} with auth {Auth}", ServerName,
             string.Join("", oauth2.Value.OAuthToken.Take(10)));
         var result = await _httpClient.SendAsync(request).ConfigureAwait(false);
 
         if (!result.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Could not renew OAuth2 Login token for {ServerName}, error code {Error}", _serverName, result.StatusCode);
+            _logger.LogWarning("Could not renew OAuth2 Login token for {ServerName}, error code {Error}", ServerName, result.StatusCode);
             currentServer.OAuthToken = null;
             _serverManager.Save();
             return false;
