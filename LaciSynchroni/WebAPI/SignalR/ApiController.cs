@@ -222,6 +222,9 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         TaskHelpers.FireAndForget(async () =>
         {
             var charaName = await _dalamudUtil.GetPlayerNameAsync().ConfigureAwait(false);
+            if (string.IsNullOrEmpty(charaName))
+                return; // No character name means the player isnt logged in, so no auto-connect
+
             var worldId = await _dalamudUtil.GetHomeWorldIdAsync().ConfigureAwait(false);
 
             Logger.LogInformation("Auto-connecting clients for character {Character} on world {WorldId}", charaName, worldId);
