@@ -144,6 +144,37 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     public List<Pair> GetOnlineUserPairsAcrossAllServers() => _allClientPairs
         .Where(p => !string.IsNullOrEmpty(p.Value.GetPlayerNameHash())).Select(p => p.Value).ToList();
 
+    public IEnumerable<string> GetVisibleUserPlayerNameOrNotesFromServer(int serverIndex) => GetOnlineUserPairs(serverIndex)
+        .Where(x => x.IsVisible)
+        .Select(x => string.Format("{0} ({1})", _configurationService.Current.PreferNoteInDtrTooltip ? x.GetNote() ?? x.PlayerName : x.PlayerName, x.UserData.AliasOrUID));
+
+    public IEnumerable<string> GetVisibleUserPlayerNameOrNotesAcrossAllServers(bool showUid)
+    {
+        var preferNotes = _configurationService.Current.PreferNoteInDtrTooltip;
+        var visibleUserPairs = _allClientPairs
+            .Where(p => !string.IsNullOrEmpty(p.Value.GetPlayerNameHash()) && p.Value.IsVisible)
+            .Select(p => new
+            {
+                p.Value.PlayerName,
+                p.Value.UserData.AliasOrUID,
+                Note = preferNotes ? p.Value.GetNote() : string.Empty,
+            })
+            .AsEnumerable();
+
+        if (showUid)
+        {
+            return visibleUserPairs
+                .GroupBy(x => preferNotes ? x.Note ?? x.PlayerName : x.PlayerName, StringComparer.InvariantCulture)
+                .Select(g => string.Format("{0} ({1})", g.Key, string.Join(" | ", g.Select(x => x.AliasOrUID).Distinct(StringComparer.InvariantCulture))));
+        }
+        else
+        {
+            return visibleUserPairs
+                .DistinctBy(p=> p.PlayerName)
+                .Select(x => string.Format("{0}", preferNotes ? x.Note ?? x.PlayerName : x.PlayerName));
+        }
+    }
+
     public int GetVisibleUserCountAcrossAllServers() => _allClientPairs
         .Count(p => p.Value.IsVisible);
 

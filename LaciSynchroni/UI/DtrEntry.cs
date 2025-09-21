@@ -132,20 +132,7 @@ public sealed class DtrEntry : IDisposable, IHostedService
             text = $"\uE044 {pairCount}";
             if (pairCount > 0)
             {
-                IEnumerable<string> visiblePairs;
-                if (_configService.Current.ShowUidInDtrTooltip)
-                {
-                    visiblePairs = _pairManager.GetOnlineUserPairsAcrossAllServers()
-                        .Where(x => x.IsVisible)
-                        .Select(x => string.Format("{0} ({1})", _configService.Current.PreferNoteInDtrTooltip ? x.GetNote() ?? x.PlayerName : x.PlayerName, x.UserData.AliasOrUID));
-                }
-                else
-                {
-                    visiblePairs = _pairManager.GetOnlineUserPairsAcrossAllServers()
-                        .Where(x => x.IsVisible)
-                        .Select(x => string.Format("{0}", _configService.Current.PreferNoteInDtrTooltip ? x.GetNote() ?? x.PlayerName : x.PlayerName));
-                }
-
+                var visiblePairs = _pairManager.GetVisibleUserPlayerNameOrNotesAcrossAllServers(_configService.Current.ShowUidInDtrTooltip);
                 tooltip = $"Laci Synchroni: Connected{Environment.NewLine}----------{Environment.NewLine}{string.Join(Environment.NewLine, visiblePairs)}";
                 colors = _configService.Current.DtrColorsPairsInRange;
             }

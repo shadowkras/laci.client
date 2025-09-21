@@ -575,7 +575,21 @@ public class CompactUi : WindowMediatorSubscriberBase
     private void DrawVisiblePairs(int serverId)
     {
         if (_apiController.IsServerConnected(serverId))
-            ImGui.TextColored(ImGuiColors.ParsedGreen, _pairManager.GetVisibleUserCount(serverId).ToString(CultureInfo.InvariantCulture));
+        {
+            var visiblePairCount = _pairManager.GetVisibleUserCount(serverId);
+            if (visiblePairCount > 0)
+            {
+                ImGui.TextColored(ImGuiColors.TankBlue, visiblePairCount.ToString(CultureInfo.InvariantCulture));
+                if (_configService.Current.ShowUidInDtrTooltip &&
+                    ImGui.IsWindowHovered() && ImGui.IsItemHovered())
+                {
+                    var playerNames = _pairManager.GetVisibleUserPlayerNameOrNotesFromServer(serverId);
+                    UiSharedService.AttachToolTip(string.Join(Environment.NewLine, playerNames));
+                }
+            }
+            else
+                ImGui.TextColored(ImGuiColors.ParsedGreen, visiblePairCount.ToString(CultureInfo.InvariantCulture));
+        }
         else
             ImGui.TextColored(ImGuiColors.DalamudRed, string.Empty);
     }
