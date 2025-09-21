@@ -92,17 +92,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _serverConfigurationManager = serverConfigurationManager;
         _logger = loggerFactory.CreateLogger($"{nameof(SyncHubClient)}-{ServerName}");
 
-        Mediator.Subscribe<DalamudLoginMessage>(this, msg =>
-        {
-            using var cts = new CancellationTokenSource();
-            TaskHelpers.FireAndForget(async () =>
-            {
-                var charaName = await _dalamudUtil.GetPlayerNameAsync().ConfigureAwait(false);
-                var worldId = await _dalamudUtil.GetHomeWorldIdAsync().ConfigureAwait(false);
-                await DalamudUtilOnLogIn(charaName, worldId).ConfigureAwait(false);
-            }, Logger, cts.Token);
-        });
-        Mediator.Subscribe<DalamudLogoutMessage>(this, (_) => DalamudUtilOnLogOut());
         Mediator.Subscribe<CyclePauseMessage>(this, (msg) =>
         {
             Logger.LogTrace("Received CyclePauseMessage for server {ServerIndex}, this is {ThisServerIndex}", msg.ServerIndex, serverIndex);
@@ -697,7 +686,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         try
         {
-            if(!_connectionCancellationTokenSource?.IsCancellationRequested ?? false)
+            if (!_connectionCancellationTokenSource?.IsCancellationRequested ?? false)
                 _connectionCancellationTokenSource?.CancelAsync();
 
             _connectionCancellationTokenSource?.Dispose();
@@ -715,7 +704,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     protected override void Dispose(bool disposing)
     {
-        base.Dispose(disposing);
+        base.Dispose(true);
         _ = Task.Run(async () => await DisposeConnectionAsync().ConfigureAwait(false));
     }
 
@@ -741,12 +730,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             Logger.LogInformation("Could not login into {ServerName} as {CharaName}, auto login is disabled", ServerName, characterName);
             await StopConnectionAsync(ServerState.NoAutoLogon).ConfigureAwait(false);
         }
-    }
-
-    private void DalamudUtilOnLogOut()
-    {
-        StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false).GetAwaiter().GetResult();
-        ServerState = ServerState.Offline;
     }
 
     public Task CyclePauseAsync(int serverIndex, UserData userData)
