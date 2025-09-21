@@ -191,8 +191,13 @@ public sealed class IpcCallerPenumbra : DisposableMediatorSubscriberBase, IIpcCa
                 foreach (var duplicatedTexture in texture.Value)
                 {
                     logger.LogInformation("Migrating duplicate {Duplicate}", duplicatedTexture);
-                    try
+                    if (IsFileLocked(texture.Key))
                     {
+                        logger.LogInformation("Skipped duplicate {Duplicate} because the source file is in use.", duplicatedTexture);
+                        continue;
+                    }
+                    try
+                    {   
                         File.Copy(texture.Key, duplicatedTexture, overwrite: true);
                     }
                     catch (Exception ex)
@@ -333,6 +338,21 @@ public sealed class IpcCallerPenumbra : DisposableMediatorSubscriberBase, IIpcCa
         if (ptr != IntPtr.Zero && string.Compare(arg1, arg2, ignoreCase: true, CultureInfo.InvariantCulture) != 0)
         {
             _syncMediator.Publish(new PenumbraResourceLoadMessage(ptr, arg1, arg2));
+        }
+    }
+
+    private static bool IsFileLocked(string path)
+    {
+        try
+        {
+            using (FileStream stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                return false;
+            }
+        }
+        catch (IOException)
+        {
+            return true;
         }
     }
 

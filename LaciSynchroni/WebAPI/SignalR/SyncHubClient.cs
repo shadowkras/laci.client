@@ -349,7 +349,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 return hubToCheck;
             }
 
-            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}", hubToCheck, ServerName);
+            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}: ({StatusCode}) {StatusCodeText}", 
+                hubToCheck, ServerName, responseHub.StatusCode, responseHub.StatusCode.ToString());
         }
 
         Logger.LogWarning("Unable to find any hub to connect to {ServerName}, aborting connection attempt.", ServerName);

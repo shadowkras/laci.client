@@ -215,6 +215,9 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
     public void AutoConnectClients()
     {
+        if (!_serverConfigManager.ServerIndexes.Any())
+            return;
+
         Mediator.Publish(new EventMessage(new Event(nameof(ApiController), EventSeverity.Informational,
             $"Auto-connecting clients initiated.")));
 
@@ -229,15 +232,24 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
 
             Logger.LogInformation("Auto-connecting clients for character {Character} on world {WorldId}", charaName, worldId);
 
+            var tasks = new HashSet<Task>();
+
             foreach (int serverIndex in _serverConfigManager.ServerIndexes)
             {
                 var server = _serverConfigManager.GetServerByIndex(serverIndex);
                 if (!server.FullPause)
                 {
-                    await GetOrCreateForServer(serverIndex).DalamudUtilOnLogIn(charaName, worldId).ConfigureAwait(false);
+                    tasks.Add(CreateConnectionForServer(serverIndex));
                 }
             }
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
         }, Logger, cts.Token);
+    }
+
+    private Task CreateConnectionForServer(ServerIndex serverIndex)
+    {
+        return GetOrCreateForServer(serverIndex).CreateConnectionsAsync();
     }
 
     protected override void Dispose(bool disposing)
