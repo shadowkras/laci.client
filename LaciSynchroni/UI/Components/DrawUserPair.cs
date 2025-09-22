@@ -237,7 +237,7 @@ public class DrawUserPair
                 : (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional
                     ? FontAwesomeIcon.User : FontAwesomeIcon.Users));
 
-            if(!string.IsNullOrEmpty(userPairText))
+            if (!string.IsNullOrEmpty(userPairText))
                 userPairText += UiSharedService.TooltipSeparator;
 
             userPairText += _pair.UserData.AliasOrUID + " is offline";
@@ -284,10 +284,8 @@ public class DrawUserPair
         if (_performanceConfigService.Current.ShowPerformanceIndicator
             && !_performanceConfigService.Current.UIDsToIgnore
                 .Exists(uid => string.Equals(uid, UserPair.User.Alias, StringComparison.Ordinal) || string.Equals(uid, UserPair.User.UID, StringComparison.Ordinal))
-            && ((_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0 && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes)
-                || (_performanceConfigService.Current.TrisWarningThresholdThousands > 0 && _performanceConfigService.Current.TrisWarningThresholdThousands * 1000 < _pair.LastAppliedDataTris))
-            && (!_pair.UserPair.OwnPermissions.IsSticky()
-                || _performanceConfigService.Current.WarnOnPreferredPermissionsExceedingThresholds))
+            && (IsVRamOverConfigWarnThreshold() || IsTrianglesOverConfigWarnThreshold())
+            && (!_pair.UserPair.OwnPermissions.IsSticky() || _performanceConfigService.Current.WarnOnPreferredPermissionsExceedingThresholds))
         {
             ImGui.SameLine();
 
@@ -295,14 +293,12 @@ public class DrawUserPair
 
             string userWarningText = "WARNING: This user exceeds one or more of your defined thresholds:" + UiSharedService.TooltipSeparator;
             bool shownVram = false;
-            if (_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0
-                && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes)
+            if (IsVRamOverConfigWarnThreshold())
             {
                 shownVram = true;
                 userWarningText += $"Approx. VRAM Usage: Used: {UiSharedService.ByteToString(_pair.LastAppliedApproximateVRAMBytes)}, Threshold: {_performanceConfigService.Current.VRAMSizeWarningThresholdMiB} MiB";
             }
-            if (_performanceConfigService.Current.TrisWarningThresholdThousands > 0
-                && _performanceConfigService.Current.TrisWarningThresholdThousands * 1024 < _pair.LastAppliedDataTris)
+            if (IsTrianglesOverConfigWarnThreshold())
             {
                 if (shownVram) userWarningText += Environment.NewLine;
                 userWarningText += $"Approx. Triangle count: Used: {_pair.LastAppliedDataTris}, Threshold: {_performanceConfigService.Current.TrisWarningThresholdThousands * 1000}";
@@ -312,6 +308,16 @@ public class DrawUserPair
         }
 
         ImGui.SameLine();
+    }
+
+    private bool IsTrianglesOverConfigWarnThreshold()
+    {
+        return (_performanceConfigService.Current.TrisWarningThresholdThousands > 0 && _performanceConfigService.Current.TrisWarningThresholdThousands * 1000 < _pair.LastAppliedDataTris);
+    }
+
+    private bool IsVRamOverConfigWarnThreshold()
+    {
+        return (_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0 && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes);
     }
 
     private void DrawName(float leftSide, float rightSide)
