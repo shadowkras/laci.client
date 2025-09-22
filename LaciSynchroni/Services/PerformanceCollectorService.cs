@@ -97,6 +97,7 @@ public sealed class PerformanceCollectorService : IHostedService
         if (!_syncConfigService.Current.LogPerformance)
         {
             _logger.LogWarning("Performance counters are disabled");
+            return;
         }
 
         StringBuilder sb = new();

@@ -277,7 +277,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         // We can always just Dispose() this - even if the client is currently not connected. Getting rid of them all
         // this way is the safest way to prevent connection leaks. If we'd wait for each of them to disconnect first,
         // we might run into FF14 exiting or similar before they are connected (if you really have to have a lot of connections)
-        foreach (var syncHubClient in _syncClients.Values)
+        foreach (var syncHubClient in _syncHubClients.Values)
         {
             DisposeAllClientsAsync().GetAwaiter().GetResult();
             _syncHubClients.Clear();
