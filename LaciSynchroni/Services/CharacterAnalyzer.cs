@@ -17,6 +17,8 @@ public sealed class CharacterAnalyzer : MediatorSubscriberBase, IDisposable
     private CancellationTokenSource _baseAnalysisCts = new();
     private string _lastDataHash = string.Empty;
 
+    private static string[] TextureFileExtensionsToNotConvert = { "BC1", "BC3", "BC5", "BC7", "DXT1" };
+
     public CharacterAnalyzer(ILogger<CharacterAnalyzer> logger, SyncMediator mediator, FileCacheManager fileCacheManager, XivDataAnalyzer modelAnalyzer)
         : base(logger, mediator)
     {
@@ -30,15 +32,25 @@ public sealed class CharacterAnalyzer : MediatorSubscriberBase, IDisposable
         _xivDataAnalyzer = modelAnalyzer;
     }
 
+    public static string[] GetTextureFileExtensionsToNotConvert() => TextureFileExtensionsToNotConvert;
+
+    /// <summary>
+    /// Gets wether or not the informed texture format can be converted to BC7.
+    /// <para>The formats not converted are: BC1 (DXT1), BC3, BC5, BC7</para>
+    /// </summary>
+    /// <param name="format"></param>
+    /// <returns></returns>
+    public static bool IsConvertableTextureFileExtension(string format) => !TextureFileExtensionsToNotConvert.Contains(format, StringComparer.OrdinalIgnoreCase);
+
     public int CurrentFile { get; internal set; }
     public bool IsAnalysisRunning => _analysisCts != null;
     public int TotalFiles { get; internal set; }
 
     public bool HasUnconvertedTextures => LastAnalysis != null && LastAnalysis.Values.SelectMany(v => v.Values)
-        .Any(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && !v.Format.Value.StartsWith("BC7", StringComparison.OrdinalIgnoreCase));
+        .Any(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && CharacterAnalyzer.IsConvertableTextureFileExtension(v.Format.Value));
 
     public int UnconvertedTextureCount => LastAnalysis != null ? LastAnalysis.Values.SelectMany(v => v.Values)
-        .Count(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && !v.Format.Value.StartsWith("BC7", StringComparison.OrdinalIgnoreCase)) : 0;
+        .Count(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && CharacterAnalyzer.IsConvertableTextureFileExtension(v.Format.Value)) : 0;
 
     internal Dictionary<ObjectKind, Dictionary<string, FileDataEntry>> LastAnalysis { get; } = [];
 

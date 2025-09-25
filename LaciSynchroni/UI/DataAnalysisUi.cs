@@ -48,11 +48,11 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
     private string _filterFilePath = string.Empty;
 
     public DataAnalysisUi(ILogger<DataAnalysisUi> logger, SyncMediator mediator,
-        CharacterAnalyzer characterAnalyzer, IpcManager ipcManager,
-        PerformanceCollectorService performanceCollectorService, UiSharedService uiSharedService,
-        PlayerPerformanceConfigService playerPerformanceConfig, TransientResourceManager transientResourceManager,
-        TransientConfigService transientConfigService)
-        : base(logger, mediator, "Laci Character Data Analysis", performanceCollectorService)
+            CharacterAnalyzer characterAnalyzer, IpcManager ipcManager,
+            PerformanceCollectorService performanceCollectorService, UiSharedService uiSharedService,
+            PlayerPerformanceConfigService playerPerformanceConfig, TransientResourceManager transientResourceManager,
+            TransientConfigService transientConfigService)
+            : base(logger, mediator, "Laci Character Data Analysis", performanceCollectorService)
     {
         _characterAnalyzer = characterAnalyzer;
         _ipcManager = ipcManager;
@@ -536,15 +536,15 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
         ImGui.SameLine();
         ImGui.TextUnformatted(UiSharedService.ByteToString(_cachedAnalysis!.Sum(c => c.Value.Sum(c => c.Value.CompressedSize))));
         ImGui.TextUnformatted($"Total modded model triangles: {_cachedAnalysis.Sum(c => c.Value.Sum(f => f.Value.Triangles))}");
-        
+
         var unconvertedTextures = _characterAnalyzer.UnconvertedTextureCount;
         if (unconvertedTextures > 0)
         {
-            UiSharedService.ColorTextWrapped($"You have {unconvertedTextures} total texture(s) that are not BC7 format. Consider converting them to BC7 to reduce their size.",
+            UiSharedService.ColorTextWrapped($"You have {unconvertedTextures} total texture(s) that are not BC7 format (or similar). Consider converting them to BC7 to reduce their size.",
                 ImGuiColors.DalamudYellow);
         }
         ImGui.Separator();
-        
+
         using var tabbar = ImRaii.TabBar("objectSelection");
         foreach (var kvp in _cachedAnalysis)
         {
@@ -620,12 +620,12 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
                     }
                 }
 
-                var nonBC7TexturesKeyCount = kvp.Value.Values
-                    .Count(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && !v.Format.Value.StartsWith("BC7", StringComparison.OrdinalIgnoreCase)); 
+                var convertableTexturesKeyCount = kvp.Value.Values
+                    .Count(v => v.FileType.Equals("tex", StringComparison.OrdinalIgnoreCase) && CharacterAnalyzer.IsConvertableTextureFileExtension(v.Format.Value));
 
-                if (nonBC7TexturesKeyCount > 0)
+                if (convertableTexturesKeyCount > 0)
                 {
-                    UiSharedService.ColorTextWrapped($"{kvp.Key} has {nonBC7TexturesKeyCount} texture(s) that are not BC7 format. Consider converting them to BC7 to reduce their size.",
+                    UiSharedService.ColorTextWrapped($"{kvp.Key} has {convertableTexturesKeyCount} texture(s) that are not BC7 format (or similar). Consider converting them to BC7 to reduce their size.",
                         ImGuiColors.DalamudYellow);
                 }
 
@@ -696,19 +696,19 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
 
                             ImGuiHelpers.ScaledDummy(5);
 
-                            var nonBC7Textures = fileGroup
-                                .Where(p => !string.Equals(p.Format.Value, "BC7", StringComparison.InvariantCultureIgnoreCase))
+                            var convertableTextures = fileGroup
+                                .Where(p => CharacterAnalyzer.IsConvertableTextureFileExtension(p.Format.Value))
                                 .ToList();
 
                             var filesToConvert = fileGroup
-                                .Where(p => p.ToConvert && !string.Equals(p.Format.Value, "BC7", StringComparison.InvariantCultureIgnoreCase))
+                                .Where(p => p.ToConvert && CharacterAnalyzer.IsConvertableTextureFileExtension(p.Format.Value))
                                 .ToList();
 
-                            using (ImRaii.Disabled(nonBC7Textures.Count == 0 || _conversionTask != null))
+                            using (ImRaii.Disabled(convertableTextures.Count == 0 || _conversionTask != null))
                             {
-                                if (_uiSharedService.IconTextButton(FontAwesomeIcon.CheckSquare, $"Select all {nonBC7Textures.Count} non-BC7 texture files"))
+                                if (_uiSharedService.IconTextButton(FontAwesomeIcon.CheckSquare, $"Select all {convertableTextures.Count} convertable texture files"))
                                 {
-                                    foreach (var entry in nonBC7Textures)
+                                    foreach (var entry in convertableTextures)
                                         entry.ToConvert = true;
                                 }
 
@@ -866,7 +866,7 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
             }
             ImGui.TextUnformatted(item.Hash);
             if (ImGui.IsItemClicked()) _selectedHash = item.Hash;
-            if(item.FilePaths.Count > 0)
+            if (item.FilePaths.Count > 0)
                 UiSharedService.AttachToolTip(item.FilePaths[0]);
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(item.FilePaths.Count.ToString());
@@ -888,7 +888,7 @@ public class DataAnalysisUi : WindowMediatorSubscriberBase
                 if (_enableBc7ConversionMode)
                 {
                     ImGui.TableNextColumn();
-                    if (string.Equals(item.Format.Value, "BC7", StringComparison.Ordinal))
+                    if (!CharacterAnalyzer.IsConvertableTextureFileExtension(item.Format.Value))
                     {
                         ImGui.TextUnformatted("");
                         continue;
