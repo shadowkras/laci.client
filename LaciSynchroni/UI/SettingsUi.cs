@@ -21,6 +21,7 @@ using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI;
 using LaciSynchroni.WebAPI.Files;
 using LaciSynchroni.WebAPI.Files.Models;
+using LaciSynchroni.WebAPI.SignalR.Utils;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
@@ -1895,8 +1896,19 @@ public class SettingsUi : WindowMediatorSubscriberBase
         var serverState = _apiController.GetServerStateForServer(serverId);
         var textColor = ApiController.GetUidColorByState(serverState);
         var serverError = _apiController.GetServerErrorByServer(serverId);
+        var showWarningIcon = serverState is not (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting or ServerState.Offline);
 
-        UiSharedService.ColorTextWrapped(serverState.ToString(), textColor);
+        using (ImRaii.Group())
+        {
+            UiSharedService.ColorTextWrapped(serverState.ToString(), textColor);
+
+            if (!string.IsNullOrEmpty(serverError) && showWarningIcon)
+            {
+                ImGui.SameLine();
+                _uiShared.IconText(FontAwesomeIcon.ExclamationTriangle);
+            }
+        }
+
         if (!string.IsNullOrEmpty(serverError))
             UiSharedService.AttachToolTip(serverError);
     }

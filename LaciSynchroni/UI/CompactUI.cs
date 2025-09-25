@@ -523,9 +523,20 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
         else
         {
-            var serverState = _apiController.GetServerStateForServer(serverId).ToString();
+            var serverState = _apiController.GetServerStateForServer(serverId);
             var serverError = _apiController.GetServerErrorByServer(serverId);
-            UiSharedService.ColorTextWrapped(serverState, textColor);
+            var showWarningIcon = serverState is not (ServerState.Connected or ServerState.Connecting or ServerState.Reconnecting or ServerState.Offline);
+
+            using (ImRaii.Group())
+            {
+                UiSharedService.ColorTextWrapped(serverState.ToString(), textColor);
+
+                if (!string.IsNullOrEmpty(serverError) && showWarningIcon)
+                {
+                    ImGui.SameLine();
+                    _uiSharedService.IconText(FontAwesomeIcon.ExclamationTriangle);
+                }
+            }
 
             if (!string.IsNullOrEmpty(serverError))
                 UiSharedService.AttachToolTip(serverError);
