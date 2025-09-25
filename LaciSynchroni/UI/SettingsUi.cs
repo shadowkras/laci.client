@@ -31,6 +31,7 @@ using System.Net.Http.Json;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using static FFXIVClientStructs.FFXIV.Component.GUI.AtkUIColorHolder.Delegates;
 
 namespace LaciSynchroni.UI;
 
@@ -1816,11 +1817,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
     {
         _uiShared.BigText($"Registered services");
         ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
+        float tableWidth = ImGui.GetContentRegionAvail().X;
 
         if (ImGui.BeginTable("MultiServerInterface", 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp))
         {
-            ImGui.TableSetupColumn($"Server Name", ImGuiTableColumnFlags.None, 3);
-            ImGui.TableSetupColumn($"Status", ImGuiTableColumnFlags.None, 1);
+            ImGui.TableSetupColumn($"Server Name", ImGuiTableColumnFlags.NoClip, 3);
+            ImGui.TableSetupColumn($"Status", ImGuiTableColumnFlags.None, 2);
             ImGui.TableSetupColumn($"Uri", ImGuiTableColumnFlags.None, 2);
             ImGui.TableSetupColumn($"Hub", ImGuiTableColumnFlags.None, 3);
             ImGui.TableSetupColumn($"Connection", ImGuiTableColumnFlags.None, 1);
@@ -1833,8 +1835,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
             {
                 ImGui.TableNextRow();
                 ImGui.TableSetColumnIndex(0);
-
-                float tableWidth = ImGui.GetContentRegionAvail().X;
 
                 string msg = "No services registered";
                 float textWidth = ImGui.CalcTextSize(msg).X;
@@ -1867,6 +1867,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                         _lastSelectedServerIndex = server.Id;
                     }
                 }
+
                 ImGui.PopID();
 
                 ImGui.SameLine();
@@ -1883,7 +1884,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                 ImGui.TableNextColumn();
                 DrawMultiServerConnectButton(server.Id, server.Name);
-
             }
 
             ImGui.EndTable();
@@ -1892,12 +1892,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawServerStatus(int serverId)
     {
-        if (_apiController.ConnectedServerIndexes.Any(p => p == serverId))
-        {
-            UiSharedService.ColorTextWrapped("Online", ImGuiColors.ParsedGreen);
-        }
-        else
-            UiSharedService.ColorTextWrapped("Offline", ImGuiColors.DalamudRed);
+        var serverState = _apiController.GetServerStateForServer(serverId);
+        var textColor = ApiController.GetUidColorByState(serverState);
+        var serverError = _apiController.GetServerErrorByServer(serverId);
+
+        UiSharedService.ColorTextWrapped(serverState.ToString(), textColor);
+        if (!string.IsNullOrEmpty(serverError))
+            UiSharedService.AttachToolTip(serverError);
     }
 
     private void DrawMultiServerConnectButton(int serverId, string serverName)

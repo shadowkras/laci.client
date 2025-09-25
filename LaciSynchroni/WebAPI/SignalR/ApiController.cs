@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.Common.Data;
+﻿using Dalamud.Interface.Colors;
+using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Dto;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
@@ -10,6 +11,7 @@ using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI.SignalR.Utils;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace LaciSynchroni.WebAPI;
@@ -63,6 +65,63 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         // - the plugin framework updates the first time and the user is logged in
         // - the user manually logged in
         Mediator.Subscribe<DalamudLoginMessage>(this, (_) => AutoConnectClients());
+    }
+
+    public string GetServerErrorByServer(int serverId)
+    {
+        var authFailureMessage = GetAuthFailureMessageByServer(serverId);
+        return GetServerErrorByState(GetServerStateForServer(serverId), authFailureMessage);
+    }
+
+    public static string GetServerErrorByState(ServerState state, string? authFailureMessage)
+    {
+        return state switch
+        {
+            ServerState.Connecting => "Attempting to connect to the server.",
+            ServerState.Reconnecting => "Connection to server interrupted, attempting to reconnect to the server.",
+            ServerState.Disconnected => "You are currently disconnected from this server.",
+            ServerState.Disconnecting => "Disconnecting from the server",
+            ServerState.Unauthorized => "Server Response: " + authFailureMessage,
+            ServerState.Offline => "This server is currently offline.",
+            ServerState.VersionMisMatch =>
+                "Your plugin or the server you are connecting to is out of date. Please update your plugin now. If you already did so, contact the server provider to update their server to the latest version.",
+            ServerState.RateLimited => "You are rate limited for (re)connecting too often. Disconnect, wait 10 minutes and try again.",
+            ServerState.Connected => string.Empty,
+            ServerState.NoSecretKey => "You have no secret key set for this current character. Open Settings -> Service Settings and set a secret key for the current character. You can reuse the same secret key for multiple characters.",
+            ServerState.MultiChara => "Your Character Configuration has multiple characters configured with same name and world. You will not be able to connect until you fix this issue. Remove the duplicates from the configuration in Settings -> Service Settings -> Character Management and reconnect manually after.",
+            ServerState.OAuthMisconfigured => "OAuth2 is enabled but not fully configured, verify in the Settings -> Service Settings that you have OAuth2 connected and, importantly, a UID assigned to your current character.",
+            ServerState.OAuthLoginTokenStale => "Your OAuth2 login token is stale and cannot be used to renew. Go to the Settings -> Service Settings and unlink then relink your OAuth2 configuration.",
+            ServerState.NoAutoLogon => "This character has automatic login disabled for the server. Press the connect button to connect to a server.",
+            ServerState.NoHubFound => "Sync Hub not found. Please request the correct Hub URI from the person running the server you want to connect to.",
+            _ => string.Empty
+        };
+    }
+
+    public Vector4 GetUidColorByServer(int serverId)
+    {
+        return GetUidColorByState(GetServerStateForServer(serverId));
+    }
+
+    public static Vector4 GetUidColorByState(ServerState state)
+    {
+        return state switch
+        {
+            ServerState.Connecting => ImGuiColors.DalamudYellow,
+            ServerState.Reconnecting => ImGuiColors.DalamudRed,
+            ServerState.Connected => ImGuiColors.ParsedGreen,
+            ServerState.Disconnected => ImGuiColors.DalamudYellow,
+            ServerState.Disconnecting => ImGuiColors.DalamudYellow,
+            ServerState.Unauthorized => ImGuiColors.DalamudRed,
+            ServerState.VersionMisMatch => ImGuiColors.DalamudRed,
+            ServerState.Offline => ImGuiColors.DalamudRed,
+            ServerState.RateLimited => ImGuiColors.DalamudYellow,
+            ServerState.NoSecretKey => ImGuiColors.DalamudYellow,
+            ServerState.MultiChara => ImGuiColors.DalamudYellow,
+            ServerState.OAuthMisconfigured => ImGuiColors.DalamudRed,
+            ServerState.OAuthLoginTokenStale => ImGuiColors.DalamudRed,
+            ServerState.NoAutoLogon => ImGuiColors.DalamudYellow,
+            _ => ImGuiColors.DalamudRed
+        };
     }
 
     public ServerState GetServerStateForServer(ServerIndex index)
