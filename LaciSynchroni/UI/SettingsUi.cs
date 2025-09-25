@@ -71,6 +71,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
     private Task<List<string>?>? _speedTestTask = null;
     private CancellationTokenSource? _speedTestCts;
     private int _lastSelectedServerIndex = 0;
+    private int _previousSelectedServer = -1;
     private string _lastSelectedServerName = string.Empty;
     private Task<(bool Success, bool PartialSuccess, string Result)>? _secretKeysConversionTask = null;
     private CancellationTokenSource _secretKeysConversionCts = new CancellationTokenSource();
@@ -425,64 +426,69 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private async Task<List<string>?> RunSpeedTest(List<string> servers, CancellationToken token)
     {
-        List<string> speedTestResults = new();
-        foreach (var server in servers)
-        {
-            HttpResponseMessage? result = null;
-            Stopwatch? st = null;
-            try
-            {
-                result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(new Uri(server), "speedtest/run"), token, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
-                result.EnsureSuccessStatusCode();
-                using CancellationTokenSource speedtestTimeCts = new();
-                speedtestTimeCts.CancelAfter(TimeSpan.FromSeconds(10));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(speedtestTimeCts.Token, token);
-                long readBytes = 0;
-                st = Stopwatch.StartNew();
-                try
-                {
-                    var stream = await result.Content.ReadAsStreamAsync(linkedCts.Token).ConfigureAwait(false);
-                    byte[] buffer = new byte[8192];
-                    while (!speedtestTimeCts.Token.IsCancellationRequested)
-                    {
-                        var currentBytes = await stream.ReadAsync(buffer, linkedCts.Token).ConfigureAwait(false);
-                        if (currentBytes == 0)
-                            break;
-                        readBytes += currentBytes;
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogWarning("Speedtest to {server} cancelled", server);
-                }
-                st.Stop();
-                _logger.LogInformation("Downloaded {bytes} from {server} in {time}", UiSharedService.ByteToString(readBytes), server, st.Elapsed);
-                var bps = (long)((readBytes) / st.Elapsed.TotalSeconds);
-                speedTestResults.Add($"{server}: ~{UiSharedService.ByteToString(bps)}/s");
-            }
-            catch (HttpRequestException ex)
-            {
-                if (result != null)
-                {
-                    var res = await result!.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    speedTestResults.Add($"{server}: {ex.Message} - {res}");
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogWarning("Speedtest on {server} cancelled", server);
-                speedTestResults.Add($"{server}: Cancelled by user");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Some exception");
-            }
-            finally
-            {
-                st?.Stop();
-            }
-        }
+        var speedTestResults = new List<string>();
+        var tasks = servers.Select(server => RunSingleSpeedTest(server, token));
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+        speedTestResults.AddRange(results);
         return speedTestResults;
+    }
+
+    private async Task<string> RunSingleSpeedTest(string server, CancellationToken token)
+    {
+        HttpResponseMessage? result = null;
+        Stopwatch? st = null;
+        try
+        {
+            result = await _fileTransferOrchestrator
+                .SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(new Uri(server), "speedtest/run"), token, HttpCompletionOption.ResponseHeadersRead)
+                .ConfigureAwait(false);
+
+            result.EnsureSuccessStatusCode();
+
+            using CancellationTokenSource speedtestTimeCts = new();
+            speedtestTimeCts.CancelAfter(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(speedtestTimeCts.Token, token);
+
+            long readBytes = 0;
+            st = Stopwatch.StartNew();
+
+            var stream = await result.Content.ReadAsStreamAsync(linkedCts.Token).ConfigureAwait(false);
+            byte[] buffer = new byte[65536]; // Bigger buffer for speedtest
+
+            while (!speedtestTimeCts.Token.IsCancellationRequested)
+            {
+                var currentBytes = await stream.ReadAsync(buffer, linkedCts.Token).ConfigureAwait(false);
+                if (currentBytes == 0)
+                    break;
+                readBytes += currentBytes;
+            }
+
+            st.Stop();
+
+            var bps = (long)((readBytes) / st.Elapsed.TotalSeconds);
+            return $"{server}: ~{UiSharedService.ByteToString(bps)}/s";
+        }
+        catch (HttpRequestException ex)
+        {
+            if (result != null)
+            {
+                var res = await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return $"{server}: {ex.Message} - {res}";
+            }
+            return $"{server}: {ex.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            return $"{server}: Cancelled";
+        }
+        catch (Exception ex)
+        {
+            return $"{server}: Exception - {ex.Message}";
+        }
+        finally
+        {
+            st?.Stop();
+        }
     }
 
     private async Task<List<string>?> GetDownloadServerList(int serverIndex)
@@ -490,9 +496,10 @@ public class SettingsUi : WindowMediatorSubscriberBase
         try
         {
             var uri = _fileTransferOrchestrator.GetFileCdnUri(serverIndex);
-            var result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(uri!, "files/downloadServers"), CancellationToken.None).ConfigureAwait(false);
+            var result = await _fileTransferOrchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, new Uri(uri!, "files/downloadServers"), CancellationToken.None).ConfigureAwait(false);
             result.EnsureSuccessStatusCode();
-            return await JsonSerializer.DeserializeAsync<List<string>>(await result.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+            var listDownloadServers = await JsonSerializer.DeserializeAsync<List<string>>(await result.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
+            return listDownloadServers;
         }
         catch (Exception ex)
         {
@@ -1248,7 +1255,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         _uiShared.BigText($"Settings for {_lastSelectedServerName} service");
 
-
         ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
         var sendCensus = _serverConfigurationManager.SendCensusData;
         if (ImGui.Checkbox("Send Statistical Census Data", ref sendCensus))
@@ -1951,7 +1957,14 @@ public class SettingsUi : WindowMediatorSubscriberBase
             using var tree = ImRaii.TreeNode($"Speed Test to {_lastSelectedServerName}");
             if (tree)
             {
-                if (_downloadServersTask == null || ((_downloadServersTask?.IsCompleted ?? false) && (!_downloadServersTask?.IsCompletedSuccessfully ?? false)))
+                if (_lastSelectedServerIndex != _previousSelectedServer)
+                {
+                    _downloadServersTask = null;
+                    _speedTestTask = null;
+                    _previousSelectedServer = _lastSelectedServerIndex;
+                }
+
+                if (_downloadServersTask is null || ((_downloadServersTask?.IsCompleted ?? false) && (!_downloadServersTask?.IsCompletedSuccessfully ?? false)))
                 {
                     var isServiceConnected = _apiController.IsServerConnected(_lastSelectedServerIndex);
                     using (ImRaii.Disabled(!isServiceConnected))
