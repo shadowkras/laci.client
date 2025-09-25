@@ -659,7 +659,7 @@ public class CompactUi : WindowMediatorSubscriberBase
                 }
                 if (unconvertedTextures > 0)
                 {
-                    UiSharedService.AttachToolTip($"You have {unconvertedTextures} texture(s) that convertable to BC7 format. Consider converting them to BC7 to reduce their size." +
+                    UiSharedService.AttachToolTip($"You have {unconvertedTextures} texture(s) that are convertable to BC7 format. Consider converting them to BC7 to reduce their size." +
                         UiSharedService.TooltipSeparator +
                         "Click to open the Character Data Analysis");
                 }
