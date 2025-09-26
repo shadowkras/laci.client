@@ -427,9 +427,25 @@ public class SettingsUi : WindowMediatorSubscriberBase
     private async Task<List<string>?> RunSpeedTest(List<string> servers, CancellationToken token)
     {
         var speedTestResults = new List<string>();
-        var tasks = servers.Select(server => RunSingleSpeedTest(server, token));
-        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-        speedTestResults.AddRange(results);
+        foreach(var server in servers)
+        {
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, token);
+
+            try
+            {
+                var results = await RunSingleSpeedTest(server, linkedCts.Token).ConfigureAwait(false);
+                speedTestResults.Add(results);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                speedTestResults.Add($"{server}: Speedtest cancelled due to timeout");
+            }
+            catch (OperationCanceledException)
+            {
+                speedTestResults.Add($"{server}: Speedtest cancelled by user");
+            }
+        }
         return speedTestResults;
     }
 
@@ -439,25 +455,23 @@ public class SettingsUi : WindowMediatorSubscriberBase
         Stopwatch? st = null;
         try
         {
+            _logger.LogInformation("Running speedtest on server {Server}", server);
+
             result = await _fileTransferOrchestrator
                 .SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(new Uri(server), "speedtest/run"), token, HttpCompletionOption.ResponseHeadersRead)
                 .ConfigureAwait(false);
 
             result.EnsureSuccessStatusCode();
 
-            using CancellationTokenSource speedtestTimeCts = new();
-            speedtestTimeCts.CancelAfter(TimeSpan.FromSeconds(10));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(speedtestTimeCts.Token, token);
-
             long readBytes = 0;
             st = Stopwatch.StartNew();
 
-            var stream = await result.Content.ReadAsStreamAsync(linkedCts.Token).ConfigureAwait(false);
+            var stream = await result.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
             byte[] buffer = new byte[65536]; // Bigger buffer for speedtest
 
-            while (!speedtestTimeCts.Token.IsCancellationRequested)
+            while (!token.IsCancellationRequested)
             {
-                var currentBytes = await stream.ReadAsync(buffer, linkedCts.Token).ConfigureAwait(false);
+                var currentBytes = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
                 if (currentBytes == 0)
                     break;
                 readBytes += currentBytes;
@@ -479,7 +493,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
         catch (OperationCanceledException)
         {
-            return $"{server}: Cancelled";
+            return $"{server}: Speedtest cancelled by the user";
         }
         catch (Exception ex)
         {
