@@ -53,7 +53,7 @@ public class SyncConfig : ISyncConfiguration
     public int TransferBarsHeight { get; set; } = 12;
     public bool TransferBarsShowText { get; set; } = true;
     public int TransferBarsWidth { get; set; } = 250;
-    public bool UseAlternativeFileUpload { get; set; } = false;
+    
     public bool UseCompactor { get; set; } = false;
     public bool DebugStopWhining { get; set; } = false;
     public bool AutoPopulateEmptyNotesFromCharaName { get; set; } = false;

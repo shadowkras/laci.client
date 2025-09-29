@@ -223,7 +223,6 @@ public class SettingsUi : WindowMediatorSubscriberBase
         _uiShared.BigText("Transfer Settings");
 
         int maxParallelDownloads = _configService.Current.ParallelDownloads;
-        bool useAlternativeUpload = _configService.Current.UseAlternativeFileUpload;
         int downloadSpeedLimit = _configService.Current.DownloadSpeedLimitInBytes;
 
         ImGui.AlignTextToFramePadding();
@@ -261,12 +260,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
             _configService.Save();
         }
 
-        if (ImGui.Checkbox("Use Alternative Upload Method", ref useAlternativeUpload))
-        {
-            _configService.Current.UseAlternativeFileUpload = useAlternativeUpload;
-            _configService.Save();
-        }
-        _uiShared.DrawHelpText("This will attempt to upload files in one go instead of a stream. Typically not necessary to enable. Use if you have upload issues.");
+        
 
         ImGui.Separator();
         _uiShared.BigText("Transfer UI");
@@ -1263,6 +1257,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         var selectedServer = _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex);
         bool useOauth = selectedServer.UseOAuth2;
+        bool useAlternativeUpload = selectedServer.UseAlternativeFileUpload;
 
         if (selectedServer is null)
             return;
@@ -1370,6 +1365,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
                             ImGuiColors.DalamudRed);
                     }
                 }
+
+                if (ImGui.Checkbox("Use Alternative Upload Method", ref useAlternativeUpload))
+                {
+                    selectedServer.UseAlternativeFileUpload = useAlternativeUpload;
+                    _serverConfigurationManager.Save();
+                }
+                _uiShared.DrawHelpText("This will attempt to upload files in one go instead of a stream. Typically not necessary to enable. Use if you have upload issues.");
 
                 ImGui.Separator();
 
