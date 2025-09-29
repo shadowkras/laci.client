@@ -267,115 +267,143 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
         Mediator.Publish(new DownloadStartedMessage(gameObjectHandler, _downloadStatus));
 
-        await Parallel.ForEachAsync(downloadGroups, new ParallelOptions()
+        // limit concurrency to number of groups (same as your MaxDegreeOfParallelism)
+        using var semaphore = new SemaphoreSlim(downloadGroups.Count());
+
+        var tasks = downloadGroups.Select(async fileGroup =>
         {
-            MaxDegreeOfParallelism = downloadGroups.Count(),
-            CancellationToken = ct,
-        },
-        async (fileGroup, token) =>
-        {
-            // let server predownload files
-            var requestIdResponse = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Post, FilesRoutes.RequestEnqueueFullPath(fileGroup.First().DownloadUri),
-                fileGroup.Select(c => c.Hash), token).ConfigureAwait(false);
-            Logger.LogDebug("Sent request for {N} files on server {Uri} with result {Result}", fileGroup.Count(), fileGroup.First().DownloadUri,
-                await requestIdResponse.Content.ReadAsStringAsync(token).ConfigureAwait(false));
+            await semaphore.WaitAsync(ct).ConfigureAwait(false);
 
-            Guid requestId = Guid.Parse((await requestIdResponse.Content.ReadAsStringAsync().ConfigureAwait(false)).Trim('"'));
-
-            Logger.LogDebug("GUID {RequestId} for {N} files on server {Uri}", requestId, fileGroup.Count(), fileGroup.First().DownloadUri);
-
-            var blockFile = _fileDbManager.GetCacheFilePath(requestId.ToString("N"), "blk");
-            FileInfo fi = new(blockFile);
             try
             {
-                _downloadStatus[fileGroup.Key].DownloadStatus = DownloadStatus.WaitingForSlot;
-                await _orchestrator.WaitForDownloadSlotAsync(token).ConfigureAwait(false);
-                _downloadStatus[fileGroup.Key].DownloadStatus = DownloadStatus.WaitingForQueue;
-                Progress<long> progress = new((bytesDownloaded) =>
-                {
-                    try
-                    {
-                        if (!_downloadStatus.TryGetValue(fileGroup.Key, out FileDownloadStatus? value)) return;
-                        value.TransferredBytes += bytesDownloaded;
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogWarning(ex, "Could not set download progress");
-                    }
-                });
-                await DownloadAndMungeFileHttpClient(serverIndex, fileGroup.Key, requestId, [.. fileGroup], blockFile, progress, token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                Logger.LogDebug("{DlName}: Detected cancellation of download, partially extracting files for {Id}", fi.Name, gameObjectHandler);
-            }
-            catch (Exception ex)
-            {
-                _orchestrator.ReleaseDownloadSlot();
-                File.Delete(blockFile);
-                Logger.LogError(ex, "{DlName}: Error during download of {Id}", fi.Name, requestId);
-                ClearDownload();
-                return;
-            }
+                // let server predownload files
+                var requestIdResponse = await _orchestrator.SendRequestAsync(
+                    serverIndex,
+                    HttpMethod.Post,
+                    FilesRoutes.RequestEnqueueFullPath(fileGroup.First().DownloadUri),
+                    fileGroup.Select(c => c.Hash),
+                    ct).ConfigureAwait(false);
 
-            FileStream? fileBlockStream = null;
-            try
-            {
-                if (_downloadStatus.TryGetValue(fileGroup.Key, out var status))
-                {
-                    status.TransferredFiles = 1;
-                    status.DownloadStatus = DownloadStatus.Decompressing;
-                }
-                fileBlockStream = File.OpenRead(blockFile);
-                while (fileBlockStream.Position < fileBlockStream.Length)
-                {
-                    (string fileHash, long fileLengthBytes) = ReadBlockFileHeader(fileBlockStream);
+                Logger.LogDebug("Sent request for {N} files on server {Uri} with result {Result}",
+                    fileGroup.Count(),
+                    fileGroup.First().DownloadUri,
+                    await requestIdResponse.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
 
-                    try
+                Guid requestId = Guid.Parse((await requestIdResponse.Content.ReadAsStringAsync().ConfigureAwait(false)).Trim('"'));
+                Logger.LogDebug("GUID {RequestId} for {N} files on server {Uri}", requestId, fileGroup.Count(), fileGroup.First().DownloadUri);
+
+                var blockFile = _fileDbManager.GetCacheFilePath(requestId.ToString("N"), "blk");
+                FileInfo fi = new(blockFile);
+
+                try
+                {
+                    _downloadStatus[fileGroup.Key].DownloadStatus = DownloadStatus.WaitingForSlot;
+                    await _orchestrator.WaitForDownloadSlotAsync(ct).ConfigureAwait(false);
+                    _downloadStatus[fileGroup.Key].DownloadStatus = DownloadStatus.WaitingForQueue;
+
+                    Progress<long> progress = new((bytesDownloaded) =>
                     {
-                        var fileExtension = fileReplacement.First(f => string.Equals(f.Hash, fileHash, StringComparison.OrdinalIgnoreCase)).GamePaths[0].Split(".")[^1];
-                        var filePath = _fileDbManager.GetCacheFilePath(fileHash, fileExtension);
-                        Logger.LogDebug("{DlName}: Decompressing {File}:{Le} => {Dest}", fi.Name, fileHash, fileLengthBytes, filePath);
-
-                        byte[] compressedFileContent = new byte[fileLengthBytes];
-                        var readBytes = await fileBlockStream.ReadAsync(compressedFileContent, CancellationToken.None).ConfigureAwait(false);
-                        if (readBytes != fileLengthBytes)
+                        try
                         {
-                            throw new EndOfStreamException();
+                            if (!_downloadStatus.TryGetValue(fileGroup.Key, out FileDownloadStatus? value)) return;
+                            value.TransferredBytes += bytesDownloaded;
                         }
-                        MungeBuffer(compressedFileContent);
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "Could not set download progress");
+                        }
+                    });
 
-                        var decompressedFile = LZ4Wrapper.Unwrap(compressedFileContent);
-                        await _fileCompactor.WriteAllBytesAsync(filePath, decompressedFile, CancellationToken.None).ConfigureAwait(false);
+                    await DownloadAndMungeFileHttpClient(
+                        serverIndex,
+                        fileGroup.Key,
+                        requestId,
+                        [.. fileGroup],
+                        blockFile,
+                        progress,
+                        ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    Logger.LogDebug("{DlName}: Detected cancellation of download, partially extracting files for {Id}", fi.Name, gameObjectHandler);
+                }
+                catch (Exception ex)
+                {
+                    _orchestrator.ReleaseDownloadSlot();
+                    File.Delete(blockFile);
+                    Logger.LogError(ex, "{DlName}: Error during download of {Id}", fi.Name, requestId);
+                    ClearDownload();
+                    return;
+                }
 
-                        PersistFileToStorage(fileHash, filePath);
-                    }
-                    catch (EndOfStreamException)
+                FileStream? fileBlockStream = null;
+                try
+                {
+                    if (_downloadStatus.TryGetValue(fileGroup.Key, out var status))
                     {
-                        Logger.LogWarning("{DlName}: Failure to extract file {FileHash}, stream ended prematurely", fi.Name, fileHash);
+                        status.TransferredFiles = 1;
+                        status.DownloadStatus = DownloadStatus.Decompressing;
                     }
-                    catch (Exception e)
+
+                    fileBlockStream = File.OpenRead(blockFile);
+                    while (fileBlockStream.Position < fileBlockStream.Length)
                     {
-                        Logger.LogWarning(e, "{DlName}: Error during decompression", fi.Name);
+                        (string fileHash, long fileLengthBytes) = ReadBlockFileHeader(fileBlockStream);
+
+                        try
+                        {
+                            var fileExtension = fileReplacement.First(f =>
+                                string.Equals(f.Hash, fileHash, StringComparison.OrdinalIgnoreCase)).GamePaths[0].Split(".")[^1];
+                            var filePath = _fileDbManager.GetCacheFilePath(fileHash, fileExtension);
+
+                            Logger.LogDebug("{DlName}: Decompressing {File}:{Le} => {Dest}", fi.Name, fileHash, fileLengthBytes, filePath);
+
+                            byte[] compressedFileContent = new byte[fileLengthBytes];
+                            var readBytes = await fileBlockStream.ReadAsync(compressedFileContent, CancellationToken.None).ConfigureAwait(false);
+                            if (readBytes != fileLengthBytes)
+                            {
+                                throw new EndOfStreamException();
+                            }
+                            MungeBuffer(compressedFileContent);
+
+                            var decompressedFile = LZ4Wrapper.Unwrap(compressedFileContent);
+                            await _fileCompactor.WriteAllBytesAsync(filePath, decompressedFile, CancellationToken.None).ConfigureAwait(false);
+
+                            PersistFileToStorage(fileHash, filePath);
+                        }
+                        catch (EndOfStreamException)
+                        {
+                            Logger.LogWarning("{DlName}: Failure to extract file {FileHash}, stream ended prematurely", fi.Name, fileHash);
+                        }
+                        catch (Exception e)
+                        {
+                            Logger.LogWarning(e, "{DlName}: Error during decompression", fi.Name);
+                        }
                     }
                 }
-            }
-            catch (EndOfStreamException)
-            {
-                Logger.LogDebug("{DlName}: Failure to extract file header data, stream ended", fi.Name);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "{DlName}: Error during block file read", fi.Name);
+                catch (EndOfStreamException)
+                {
+                    Logger.LogDebug("{DlName}: Failure to extract file header data, stream ended", fi.Name);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "{DlName}: Error during block file read", fi.Name);
+                }
+                finally
+                {
+                    _orchestrator.ReleaseDownloadSlot();
+                    if (fileBlockStream != null)
+                        await fileBlockStream.DisposeAsync().ConfigureAwait(false);
+                    File.Delete(blockFile);
+                }
             }
             finally
             {
-                _orchestrator.ReleaseDownloadSlot();
-                if (fileBlockStream != null)
-                    await fileBlockStream.DisposeAsync().ConfigureAwait(false);
-                File.Delete(blockFile);
+                semaphore.Release();
             }
-        }).ConfigureAwait(false);
+        });
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
 
         Logger.LogDebug("Download end: {Id}", gameObjectHandler);
 
