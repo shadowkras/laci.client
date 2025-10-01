@@ -312,7 +312,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var hubsToCheck = new List<Uri>();
 
         // Add advanced hub uri if available
-        if (ServerToUse.UseAdvancedUris && !string.IsNullOrEmpty(ServerToUse.ServerHubUri))
+        if (!string.IsNullOrEmpty(ServerToUse.ServerHubUri))
         {
             var configuredHubUri = new UriBuilder(ServerToUse.ServerHubUri).WsToHttp().Uri;
             hubsToCheck.Add(configuredHubUri);

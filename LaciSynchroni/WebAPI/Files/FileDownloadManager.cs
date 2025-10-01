@@ -78,9 +78,10 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         try
         {
             var serverName = _serverManager.GetServerNameByIndex(serverIndex);
-            Logger.LogDebug("Downloading files for {ServerName}", serverName);
-            await DownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct).ConfigureAwait(false);
-            await DirectDownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct).ConfigureAwait(false);
+            Logger.LogDebug("Downloading files from {ServerName}", serverName);
+            var downloadFilesTask = DownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct);
+            var directDownloadFilesTask = DirectDownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct);
+            await Task.WhenAll(downloadFilesTask, directDownloadFilesTask).ConfigureAwait(false);
         }
         catch
         {

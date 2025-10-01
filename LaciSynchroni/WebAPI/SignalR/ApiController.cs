@@ -307,6 +307,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             foreach (int serverIndex in _serverConfigManager.ServerIndexes)
             {
                 var server = _serverConfigManager.GetServerByIndex(serverIndex);
+
+                if(server.Authentications.Any(p=> !p.AutoLogin && p.CharacterName.Equals(charaName, StringComparison.OrdinalIgnoreCase) && p.WorldId == worldId))
+                {
+                    Logger.LogDebug("Skipping auto-connect for {Server} because auto-login is disabled for {Character}", server.ServerName, charaName);
+                    continue;
+                }
+
                 // When you manually disconnect a service it gets full paused. In that case, the user explicitly asked for it
                 // not to be connected, so we'll just leave it
                 // Manually connecting once triggers auto connects again!
