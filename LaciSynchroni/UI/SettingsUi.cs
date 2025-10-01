@@ -1258,6 +1258,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         var selectedServer = _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex);
         bool useOauth = selectedServer.UseOAuth2;
         bool useAlternativeUpload = selectedServer.UseAlternativeFileUpload;
+        bool enableObfuscationDownloadedFiles = selectedServer.EnableObfuscationDownloadedFiles;
 
         if (selectedServer is null)
             return;
@@ -1366,12 +1367,19 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     }
                 }
 
+                if (ImGui.Checkbox("Enable Obfuscation on Downloaded Files", ref enableObfuscationDownloadedFiles))
+                {
+                    selectedServer.EnableObfuscationDownloadedFiles = enableObfuscationDownloadedFiles;
+                    _serverConfigurationManager.Save();
+                }
+                _uiShared.DrawHelpText("This will apply minor obfuscation (munging) on downloaded files. Default is enabled, but should be disabled if the service doesnt allow it, as that will make mod files not apply at all to your pairs.");
+
                 if (ImGui.Checkbox("Use Alternative Upload Method", ref useAlternativeUpload))
                 {
                     selectedServer.UseAlternativeFileUpload = useAlternativeUpload;
                     _serverConfigurationManager.Save();
                 }
-                _uiShared.DrawHelpText("This will attempt to upload files in one go instead of a stream. Typically not necessary to enable. Use if you have upload issues.");
+                _uiShared.DrawHelpText("This will apply minor obfuscation (munging) and attempt to upload files in one go instead of a stream. Typically not necessary to enable. Use if you have upload issues.");
 
                 ImGui.Separator();
 

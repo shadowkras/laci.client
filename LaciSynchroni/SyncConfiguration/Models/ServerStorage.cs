@@ -12,6 +12,7 @@ public class ServerStorage
     public string ServerUri { get; set; } = string.Empty;
     public string ServerHubUri { get; set; } = string.Empty;
     public bool UseAdvancedUris { get; set; } = false;
+    public bool EnableObfuscationDownloadedFiles { get; set; } = true;
     public bool UseAlternativeFileUpload { get; set; } = false;
     public bool UseOAuth2 { get; set; } = false;
     public string? OAuthToken { get; set; } = null;

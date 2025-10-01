@@ -53,6 +53,10 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
     public bool IsDownloading => !CurrentDownloads.Any();
 
+    /// <summary>
+    /// XORs each byte in the buffer with 42 (small obfuscation).
+    /// </summary>
+    /// <param name="buffer"></param>
     public static void MungeBuffer(Span<byte> buffer)
     {
         for (int i = 0; i < buffer.Length; ++i)
@@ -106,6 +110,12 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         base.Dispose(disposing);
     }
 
+    /// <summary>
+    /// Munges a single byte, throws EndOfStreamException if input is -1 (EOF).
+    /// </summary>
+    /// <param name="byteOrEof"></param>
+    /// <returns></returns>
+    /// <exception cref="EndOfStreamException"></exception>
     private static byte MungeByte(int byteOrEof)
     {
         if (byteOrEof == -1)
@@ -116,11 +126,14 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         return (byte)(byteOrEof ^ 42);
     }
 
-    private static (string fileHash, long fileLengthBytes) ReadBlockFileHeader(FileStream fileBlockStream)
+    /// <summary>
+    /// Reads a block file header from the given filestream, optionally munging the bytes.
+    /// </summary>
+    private static (string fileHash, long fileLengthBytes) ReadBlockFileHeader(FileStream fileBlockStream, bool munge)
     {
         List<char> hashName = [];
         List<char> fileLength = [];
-        var separator = (char)MungeByte(fileBlockStream.ReadByte());
+        var separator = munge ? (char)MungeByte(fileBlockStream.ReadByte()) : (char)(fileBlockStream.ReadByte());
         if (separator != '#') throw new InvalidDataException("Data is invalid, first char is not #");
 
         bool readHash = false;
@@ -130,7 +143,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             if (readByte == -1)
                 throw new EndOfStreamException();
 
-            var readChar = (char)MungeByte(readByte);
+            var readChar = munge ? (char)MungeByte(readByte) : (char)(readByte);
             if (readChar == ':')
             {
                 readHash = true;
@@ -143,7 +156,10 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         return (string.Join("", hashName), long.Parse(string.Join("", fileLength)));
     }
 
-    private async Task DownloadAndMungeFileHttpClient(int serverIndex, string downloadGroup, Guid requestId, List<DownloadFileTransfer> fileTransfer, string tempPath, IProgress<long> progress, CancellationToken ct)
+    /// <summary>
+    /// Downloads a file using HttpClient, with optional munging of the data.
+    /// </summary>
+    private async Task DownloadFileHttpClient(int serverIndex, string downloadGroup, Guid requestId, List<DownloadFileTransfer> fileTransfer, string tempPath, IProgress<long> progress, bool munge, CancellationToken ct)
     {
         Logger.LogDebug("GUID {RequestId} on server {Uri} for files {Files}", requestId, fileTransfer[0].DownloadUri, string.Join(", ", fileTransfer.Select(c => c.Hash).ToList()));
 
@@ -187,7 +203,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    MungeBuffer(buffer.AsSpan(0, bytesRead));
+                    // Munge the buffer if needed
+                    if (munge)
+                        MungeBuffer(buffer.AsSpan(0, bytesRead));
 
                     await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct).ConfigureAwait(false);
 
@@ -251,6 +269,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
     private async Task DownloadFilesInternal(int serverIndex, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
     {
+        var enableFileObfuscation = _serverManager.GetServerByIndex(serverIndex)?.EnableObfuscationDownloadedFiles ?? false;
         var downloadGroups = CurrentDownloads.GroupBy(f => f.DownloadUri.Host + ":" + f.DownloadUri.Port, StringComparer.Ordinal);
 
         foreach (var downloadGroup in downloadGroups)
@@ -314,13 +333,14 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                         }
                     });
 
-                    await DownloadAndMungeFileHttpClient(
+                    await DownloadFileHttpClient(
                         serverIndex,
                         fileGroup.Key,
                         requestId,
                         [.. fileGroup],
                         blockFile,
                         progress,
+                        enableFileObfuscation,
                         ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
@@ -348,7 +368,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                     fileBlockStream = File.OpenRead(blockFile);
                     while (fileBlockStream.Position < fileBlockStream.Length)
                     {
-                        (string fileHash, long fileLengthBytes) = ReadBlockFileHeader(fileBlockStream);
+                        (string fileHash, long fileLengthBytes) = ReadBlockFileHeader(fileBlockStream, enableFileObfuscation);
 
                         try
                         {
@@ -364,7 +384,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                             {
                                 throw new EndOfStreamException();
                             }
-                            MungeBuffer(compressedFileContent);
+
+                            if(enableFileObfuscation)
+                                MungeBuffer(compressedFileContent);
 
                             var decompressedFile = LZ4Wrapper.Unwrap(compressedFileContent);
                             await _fileCompactor.WriteAllBytesAsync(filePath, decompressedFile, CancellationToken.None).ConfigureAwait(false);
