@@ -206,7 +206,16 @@ public class DrawUserPair
             userPairText = _apiController.GetServerNameByIndex(_pair.ServerIndex);
         }
 
-        if (_pair.IsVisible)
+        if (_pair.IsPaused)
+        {
+            _uiSharedService.IconText(FontAwesomeIcon.PauseCircle, ImGuiColors.DalamudYellow);
+
+            if (!string.IsNullOrEmpty(userPairText))
+                userPairText += UiSharedService.TooltipSeparator;
+
+            userPairText += _pair.UserData.AliasOrUID + " is paused";
+        }
+        else if (_pair.IsVisible)
         {
             _uiSharedService.IconText(FontAwesomeIcon.Eye, ImGuiColors.ParsedGreen);
 
