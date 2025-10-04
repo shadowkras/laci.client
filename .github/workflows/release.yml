@@ -33,14 +33,19 @@ jobs:
         id: get_is_testing
         shell: pwsh
         run: |
-            if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
-                $versionString = "${{ github.event.inputs.version }}"
-            } else {
-                $versionString = "${GITHUB_REF}" -replace '^refs/tags/', ''
-            }
-            Write-Output "VERSION=$versionString" >> $env:GITHUB_OUTPUT
-            Write-Output "IS_TESTING=$(([Version]::Parse($versionString).Revision -gt 0).ToString().ToLower())" >> $env:GITHUB_OUTPUT
-
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ github.event.inputs.version }}" -ne "") {
+              $versionString = "${{ github.event.inputs.version }}"
+          } else {
+              $versionString = "${GITHUB_REF}" -replace '^refs/tags/v', ''
+          }
+      
+          if ($versionString -notmatch '^\d+\.\d+\.\d+$') {
+              Write-Error "Version format invalid: $versionString. Expected format: X.Y.Z"
+              exit 1
+          }
+      
+          Write-Output "VERSION=$versionString" >> $env:GITHUB_OUTPUT
+          Write-Output "IS_TESTING=$(([Version]::Parse($versionString).Revision -gt 0).ToString().ToLower())" >> $env:GITHUB_OUTPUT
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
