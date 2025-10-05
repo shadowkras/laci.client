@@ -79,29 +79,3 @@ jobs:
           files: |
             ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}.zip
             ./bin/LaciSynchroni/LaciSynchroni_v${{ github.ref_name }}_sbom.spdx.json
-
-      - name: Request Repository Update (Generate App Token, 1/2)
-        id: app_token
-        uses: actions/create-github-app-token@v2
-        with:
-          owner: ${{ github.repository_owner }}
-          repositories: repo
-          app-id: ${{ secrets.BUILD_ORGANIZER_APP_ID }}
-          private-key: ${{ secrets.BUILD_ORGANIZER_APP_PRIVATE_KEY }}
-
-      - name: Request Repository Update (Trigger Workflow, 2/2)
-        uses: actions/github-script@v8
-        with:
-          github-token: ${{ steps.app_token.outputs.token }}
-          script: |
-            github.rest.repos.createDispatchEvent({
-              owner: "${{ github.repository_owner }}",
-              repo: "repo",
-              event_type: "new-release",
-              client_payload: {
-                "tag": "${{ github.ref_name }}",
-                "is_testing": ${{ steps.get_is_testing.outputs.IS_TESTING }},
-                "api_level": "${{ fromJSON(steps.load_packager_manifest.outputs.MANIFEST_JSON).DalamudApiLevel }}",
-                "asset_url": "${{ fromJSON(steps.create_release.outputs.assets)[0].browser_download_url }}"
-              },
-            })
