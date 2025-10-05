@@ -1259,6 +1259,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         bool useOauth = selectedServer.UseOAuth2;
         bool useAlternativeUpload = selectedServer.UseAlternativeFileUpload;
         bool enableObfuscationDownloadedFiles = selectedServer.EnableObfuscationDownloadedFiles;
+        bool showPairingRequestNotification = selectedServer.ShowPairingRequestNotification;
 
         if (selectedServer is null)
             return;
@@ -1380,6 +1381,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     _serverConfigurationManager.Save();
                 }
                 _uiShared.DrawHelpText("This will apply minor obfuscation (munging) and attempt to upload files in one go instead of a stream. Typically not necessary to enable. Use if you have upload issues.");
+
+                if (ImGui.Checkbox("Show Pairing Request Notification", ref showPairingRequestNotification))
+                {
+                    selectedServer.ShowPairingRequestNotification = showPairingRequestNotification;
+                    _serverConfigurationManager.Save();
+                }
+                _uiShared.DrawHelpText("This will enable new pairing notification requests, if the service has those enabled.");
 
                 ImGui.Separator();
 

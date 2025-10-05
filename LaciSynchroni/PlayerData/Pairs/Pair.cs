@@ -67,16 +67,18 @@ public class Pair
         SeStringBuilder seStringBuilder2 = new();
         SeStringBuilder seStringBuilder3 = new();
         SeStringBuilder seStringBuilder4 = new();
+        SeStringBuilder seStringBuilder5 = new();
         var openProfileSeString = seStringBuilder.AddText("Open Profile").Build();
         var reapplyDataSeString = seStringBuilder2.AddText("Reapply last data").Build();
         var cyclePauseState = seStringBuilder3.AddText("Cycle pause state").Build();
         var changePermissions = seStringBuilder4.AddText("Change Permissions").Build();
+        var pairIndividually = seStringBuilder5.AddText("Pair Individually").Build();
         args.AddMenuItem(new MenuItem()
         {
             Name = openProfileSeString,
             OnClicked = (a) => _mediator.Publish(new ProfileOpenStandaloneMessage(this)),
             UseDefaultPrefix = false,
-            PrefixChar = 'M',
+            PrefixChar = 'L',
             PrefixColor = 526
         });
 
@@ -85,7 +87,7 @@ public class Pair
             Name = reapplyDataSeString,
             OnClicked = (a) => ApplyLastReceivedData(forced: true),
             UseDefaultPrefix = false,
-            PrefixChar = 'M',
+            PrefixChar = 'L',
             PrefixColor = 526
         });
 
@@ -94,7 +96,7 @@ public class Pair
             Name = changePermissions,
             OnClicked = (a) => _mediator.Publish(new OpenPermissionWindow(this)),
             UseDefaultPrefix = false,
-            PrefixChar = 'M',
+            PrefixChar = 'L',
             PrefixColor = 526
         });
 
@@ -103,9 +105,22 @@ public class Pair
             Name = cyclePauseState,
             OnClicked = (a) => _mediator.Publish(new CyclePauseMessage(ServerIndex, UserData)),
             UseDefaultPrefix = false,
-            PrefixChar = 'M',
+            PrefixChar = 'L',
             PrefixColor = 526
         });
+
+        // Only show the option to pair if we don't already have a pairing
+        if (IndividualPairStatus == IndividualPairStatus.None)
+        {
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = pairIndividually,
+                OnClicked = (a) => _mediator.Publish(new UserAddPairMessage(ServerIndex, UserData)),
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 530
+            });
+        }
     }
 
     public void ApplyData(OnlineUserCharaDataDto data)

@@ -111,6 +111,21 @@ public partial class SyncHubClient
         return Task.CompletedTask;
     }
 
+    public Task Client_ReceivePairingMessage(UserDto dto)
+    {
+        Logger.LogDebug("Got a request to pair from {uid}", dto.User.UID);
+        var pair = _pairManager.GetPairByUID(ServerIndex, dto.User.UID);
+        if (pair == null) return Task.CompletedTask;
+        var player = string.IsNullOrEmpty(pair.PlayerName) ? dto.User.AliasOrUID : pair.PlayerName;
+        Logger.LogDebug("Got a request to pair from {uid} mapping to {player}.", dto.User.UID, player);
+        if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
+        {
+            Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
+                $"Player {player} would like to pair. To accept, right click their character, or use the triple-dot menu next to their name, and select \"Pair individually\".", NotificationType.Info, TimeSpan.FromSeconds(15)));
+        }
+        return Task.CompletedTask;
+    }
+
     public Task Client_UpdateSystemInfo(SystemInfoDto systemInfo)
     {
         SystemInfoDto = systemInfo;
@@ -288,6 +303,13 @@ public partial class SyncHubClient
     {
         if (_initialized) return;
         _connection!.On(nameof(Client_ReceiveServerMessage), act);
+    }
+
+    public void OnReceivePairingMessage(Action<UserDto> act)
+    {
+        Logger.LogDebug("ReceievedPairingMessage");
+        if (_initialized) return;
+        _connection!.On(nameof(Client_ReceivePairingMessage), act);
     }
 
     public void OnUpdateSystemInfo(Action<SystemInfoDto> act)

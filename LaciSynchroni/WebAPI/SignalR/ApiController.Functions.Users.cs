@@ -1,6 +1,7 @@
 ﻿using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Dto;
 using LaciSynchroni.Common.Dto.User;
+using LaciSynchroni.Services.ServerConfiguration;
 
 namespace LaciSynchroni.WebAPI;
 using ServerIndex = int;
@@ -21,7 +22,8 @@ public partial class ApiController
 
     public async Task UserAddPair(ServerIndex serverIndex, UserDto user)
     {
-        await GetClientForServer(serverIndex)!.UserAddPair(user).ConfigureAwait(false);
+        var sendPairNotification = _serverConfigManager.GetServerByIndex(serverIndex)?.ShowPairingRequestNotification ?? false;
+        await GetClientForServer(serverIndex)!.UserAddPair(user, sendPairNotification).ConfigureAwait(false);
     }
 
     public async Task UserDelete(ServerIndex serverIndex)

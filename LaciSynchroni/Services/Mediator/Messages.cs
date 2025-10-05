@@ -65,6 +65,7 @@ public record PlayerUploadingMessage(GameObjectHandler Handler, bool IsUploading
 public record ClearProfileDataMessage(ServerBasedUserKey? UserData = null) : MessageBase;
 public record CyclePauseMessage(int ServerIndex, UserData UserData) : MessageBase;
 public record PauseMessage(int ServerIndex, UserData UserData) : MessageBase;
+public record UserAddPairMessage(int ServerIndex, UserData UserData) : MessageBase;
 public record ProfilePopoutToggle(Pair? Pair) : MessageBase;
 public record CompactUiChange(Vector2 Size, Vector2 Position) : MessageBase;
 public record ProfileOpenStandaloneMessage(Pair Pair) : MessageBase;

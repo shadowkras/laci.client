@@ -104,6 +104,14 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             if (serverIndex == msg.ServerIndex)
                 _ = PauseAsync(msg.ServerIndex, msg.UserData);
         });
+        Mediator.Subscribe<UserAddPairMessage>(this, (msg) =>
+        {
+            if (serverIndex == msg.ServerIndex)
+            {
+                var sendPairNotification = _serverConfigurationManager.GetServerByIndex(ServerIndex)?.ShowPairingRequestNotification ?? false;
+                _ = UserAddPair(new UserDto(msg.UserData), sendPairNotification);
+            }
+        });
     }
 
     public async Task CreateConnectionsAsync()
@@ -532,6 +540,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         Logger.LogDebug("Initializing data");
         OnDownloadReady((guid) => _ = Client_DownloadReady(guid));
         OnReceiveServerMessage((sev, msg) => _ = Client_ReceiveServerMessage(sev, msg));
+        OnReceivePairingMessage((dto) => _ = Client_ReceivePairingMessage(dto));
         OnUpdateSystemInfo((dto) => _ = Client_UpdateSystemInfo(dto));
 
         OnUserSendOffline((dto) => _ = Client_UserSendOffline(dto));
@@ -652,13 +661,17 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private async Task LoadInitialPairsAsync()
     {
-        foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
+        var groupsTask = GroupsGetAll();
+        var userPairsTask = UserGetPairedClients();
+        await Task.WhenAll(groupsTask, userPairsTask).ConfigureAwait(false);
+        
+        foreach (var entry in groupsTask.Result)
         {
             Logger.LogDebug("Group: {Entry}", entry);
             _pairManager.AddGroup(entry, ServerIndex);
         }
 
-        foreach (var userPair in await UserGetPairedClients().ConfigureAwait(false))
+        foreach (var userPair in userPairsTask.Result)
         {
             Logger.LogDebug("Individual Pair: {UserPair}", userPair);
             _pairManager.AddUserPair(userPair, ServerIndex);

@@ -27,10 +27,10 @@ public partial class SyncHubClient
         }
     }
 
-    public async Task UserAddPair(UserDto user)
+    public async Task UserAddPair(UserDto user, bool? pairingNotice = false)
     {
         if (!IsConnected) return;
-        await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+        await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false);
     }
 
     public async Task UserDelete()
