@@ -441,11 +441,12 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     {
         if (args.MenuType == ContextMenuType.Inventory) return;
         if (!_configurationService.Current.EnableRightClickMenus) return;
+        var targetNameProperty = args.Target.GetType().GetProperties().FirstOrDefault(p => string.Equals(p.Name, "TargetName", StringComparison.CurrentCultureIgnoreCase));
+        var targetName = targetNameProperty?.GetValue(args.Target)?.ToString() ?? string.Empty;
+        var uniquePlayerPairs = _allClientPairs.Where(p=> p.Value.IsVisible && string.Equals(p.Value.PlayerName, targetName, StringComparison.CurrentCultureIgnoreCase))
+            .Distinct();
 
-        foreach (var pair in _allClientPairs.Where((p => p.Value.IsVisible)))
-        {
-            pair.Value.AddContextMenu(args);
-        }
+        uniquePlayerPairs.FirstOrDefault().Value.AddContextMenu(args, uniquePlayerPairs);
     }
 
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)

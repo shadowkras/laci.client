@@ -760,7 +760,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
                 var onlinePairs = _pairManager.GetOnlineUserPairs(ServerIndex);
-                if (!onlinePairs.Any(p => p.UserPair != null && p.UserData.UID.Equals(userData.UID)))
+                if (!onlinePairs.Any(p => p.UserPair != null && p.UserData.AliasOrUID.Equals(userData.AliasOrUID)))
                 {
                     Logger.LogInformation("User {AliasOrUID} is not online on server {ServerName}, cannot cycle pause", userData.AliasOrUID, ServerName);
                     return;

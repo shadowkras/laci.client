@@ -10,6 +10,7 @@ using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.Utils;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
 
 namespace LaciSynchroni.PlayerData.Pairs;
 
@@ -59,9 +60,12 @@ public class Pair
     public UserFullPairDto UserPair { get; set; }
     private PairHandler? CachedPlayer { get; set; }
 
-    public void AddContextMenu(IMenuOpenedArgs args)
+    public void AddContextMenu(IMenuOpenedArgs args, IEnumerable<KeyValuePair<ServerBasedUserKey, Pair>> serverPairs)
     {
-        if (CachedPlayer == null || (args.Target is not MenuTargetDefault target) || target.TargetObjectId != CachedPlayer.PlayerCharacterId || IsPaused) return;
+        if (CachedPlayer == null ||
+            (args.Target is not MenuTargetDefault target) || 
+            target.TargetObjectId != CachedPlayer.PlayerCharacterId || 
+            IsPaused) return;
 
         SeStringBuilder seStringBuilder = new();
         SeStringBuilder seStringBuilder2 = new();
@@ -76,8 +80,11 @@ public class Pair
         args.AddMenuItem(new MenuItem()
         {
             Name = openProfileSeString,
-            OnClicked = (a) => _mediator.Publish(new ProfileOpenStandaloneMessage(this)),
-            UseDefaultPrefix = false,
+            OnClicked = (a) =>
+            {
+                _mediator.Publish(new ProfileOpenStandaloneMessage(serverPairs.Select(p => p.Value)));
+            },
+            UseDefaultPrefix = true,
             PrefixChar = 'L',
             PrefixColor = 526
         });
@@ -103,7 +110,11 @@ public class Pair
         args.AddMenuItem(new MenuItem()
         {
             Name = cyclePauseState,
-            OnClicked = (a) => _mediator.Publish(new CyclePauseMessage(ServerIndex, UserData)),
+            OnClicked = (a) =>
+            {
+                foreach (var item in serverPairs)
+                    _mediator.Publish(new CyclePauseMessage(item.Key.ServerIndex, item.Value.UserData));
+            },
             UseDefaultPrefix = false,
             PrefixChar = 'L',
             PrefixColor = 526
@@ -115,7 +126,11 @@ public class Pair
             args.AddMenuItem(new MenuItem()
             {
                 Name = pairIndividually,
-                OnClicked = (a) => _mediator.Publish(new UserAddPairMessage(ServerIndex, UserData)),
+                OnClicked = (a) =>
+                {
+                    foreach (var item in serverPairs)
+                        _mediator.Publish(new UserAddPairMessage(item.Key.ServerIndex, item.Value.UserData));
+                },
                 UseDefaultPrefix = false,
                 PrefixChar = 'L',
                 PrefixColor = 530

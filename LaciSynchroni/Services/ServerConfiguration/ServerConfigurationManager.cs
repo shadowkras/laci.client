@@ -222,6 +222,13 @@ public class ServerConfigurationManager
         return _serverConfigService.Current.ServerStorage.Select(v => v.ServerName).ToArray();
     }
 
+    public string[] GetServerNamesByIndexes(int[] serverIndexes)
+    {
+        return _serverConfigService.Current.ServerStorage.Where((server, index) => serverIndexes.Contains(index))
+            .Select(v => v.ServerName)
+            .ToArray();
+    }
+
     public bool HasValidConfig()
     {
         return _serverConfigService.Current.ServerStorage.Count > 0 &&

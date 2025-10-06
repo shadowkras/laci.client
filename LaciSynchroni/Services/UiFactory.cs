@@ -40,10 +40,10 @@ public class UiFactory
             _apiController, _uiSharedService, _pairManager, dto, _performanceCollectorService, serverIndex);
     }
 
-    public StandaloneProfileUi CreateStandaloneProfileUi(Pair pair)
+    public StandaloneProfileUi CreateStandaloneProfileUi(IEnumerable<Pair> pairs)
     {
         return new StandaloneProfileUi(_loggerFactory.CreateLogger<StandaloneProfileUi>(), _syncMediator,
-            _uiSharedService, _serverConfigManager, _profileManager, _pairManager, pair, _performanceCollectorService);
+            _uiSharedService, _serverConfigManager, _profileManager, _pairManager, pairs, _apiController, _performanceCollectorService);
     }
 
     public PermissionWindowUI CreatePermissionPopupUi(Pair pair)

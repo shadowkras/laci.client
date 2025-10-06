@@ -7,6 +7,8 @@ using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
+using LaciSynchroni.UI.Components;
+using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Logging;
 using System.Numerics;
 
@@ -18,32 +20,41 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
     private readonly PairManager _pairManager;
     private readonly ServerConfigurationManager _serverManager;
     private readonly UiSharedService _uiSharedService;
+    private readonly ApiController _apiController;
     private bool _adjustedForScrollBars = false;
     private byte[] _lastProfilePicture = [];
     private byte[] _lastSupporterPicture = [];
     private IDalamudTextureWrap? _supporterTextureWrap;
     private IDalamudTextureWrap? _textureWrap;
+    private IEnumerable<Pair> _currentPairs { get; set; }
+    private readonly ServerSelectorSmall _serverSelector;
+    private int _serverForProfile = 0;
+    private bool _singleProfile => _currentPairs.Count() == 1;
+
+    public Pair CurrentPair { get; set; }
 
     public StandaloneProfileUi(ILogger<StandaloneProfileUi> logger, SyncMediator mediator, UiSharedService uiBuilder,
-        ServerConfigurationManager serverManager, ProfileManager profileManager, PairManager pairManager, Pair pair,
+        ServerConfigurationManager serverManager, ProfileManager profileManager, PairManager pairManager, IEnumerable<Pair> pairs,
+        ApiController apiController,
         PerformanceCollectorService performanceCollector)
-        : base(logger, mediator, "Sync Profile of " + pair.UserData.AliasOrUID + "##LaciSynchroniStandaloneProfileUI" + pair.UserData.AliasOrUID, performanceCollector)
+        : base(logger, mediator, "Sync Profile of " + pairs.First().PlayerName + "##LaciSynchroniStandaloneProfileUI", performanceCollector)
     {
         _uiSharedService = uiBuilder;
         _serverManager = serverManager;
         _profileManager = profileManager;
-        Pair = pair;
+        _currentPairs = pairs;
         _pairManager = pairManager;
+        _apiController = apiController;
+        _serverSelector = new ServerSelectorSmall(index => _serverForProfile = index);
+
+        CurrentPair = pairs.First();
+
         Flags = ImGuiWindowFlags.NoResize | ImGuiWindowFlags.AlwaysAutoResize;
-
         var spacing = ImGui.GetStyle().ItemSpacing;
-
         Size = new(512 + spacing.X * 3 + ImGui.GetStyle().WindowPadding.X + ImGui.GetStyle().WindowBorderSize, 512);
 
         IsOpen = true;
     }
-
-    public Pair Pair { get; init; }
 
     protected override void DrawInternal()
     {
@@ -51,7 +62,14 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
         {
             var spacing = ImGui.GetStyle().ItemSpacing;
 
-            var msg = new ServerBasedUserKey(Pair.UserData, Pair.ServerIndex);
+            if (!_singleProfile)
+            {
+                var serverIndexes = _currentPairs.Select(p => p.ServerIndex).ToArray();
+                _serverSelector.Draw(_serverManager.GetServerNamesByIndexes(serverIndexes), serverIndexes, 512);
+                CurrentPair = _currentPairs?.FirstOrDefault(p => p.ServerIndex == _serverForProfile) ?? CurrentPair;
+            }
+
+            var msg = new ServerBasedUserKey(CurrentPair.UserData, CurrentPair.ServerIndex);
             var syncProfile = _profileManager.GetSyncProfile(msg);
 
             if (_textureWrap == null || !syncProfile.ImageData.Value.SequenceEqual(_lastProfilePicture))
@@ -78,7 +96,17 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
             var headerSize = ImGui.GetCursorPosY() - ImGui.GetStyle().WindowPadding.Y;
 
             using (_uiSharedService.UidFont.Push())
-                UiSharedService.ColorText(Pair.UserData.AliasOrUID, ImGuiColors.HealerGreen);
+            {
+                if (_singleProfile)
+                {
+                    var serverName = _apiController.GetServerNameByIndex(CurrentPair.ServerIndex);
+                    UiSharedService.ColorText($"{CurrentPair.UserData.AliasOrUID} @ {serverName}", ImGuiColors.HealerGreen);
+                }
+                else
+                {
+                    UiSharedService.ColorText($"{CurrentPair.UserData.AliasOrUID}", ImGuiColors.HealerGreen);
+                }
+            }
 
             ImGuiHelpers.ScaledDummy(new Vector2(spacing.Y, spacing.Y));
             var textPos = ImGui.GetCursorPosY() - headerSize;
@@ -113,39 +141,39 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
             ImGui.EndChildFrame();
 
             ImGui.SetCursorPosY(postDummy);
-            var note = _serverManager.GetNoteForUid(Pair.ServerIndex, Pair.UserData.UID);
+            var note = _serverManager.GetNoteForUid(CurrentPair.ServerIndex, CurrentPair.UserData.UID);
             if (!string.IsNullOrEmpty(note))
             {
                 UiSharedService.ColorText(note, ImGuiColors.DalamudGrey);
             }
-            string status = Pair.IsVisible ? "Visible" : (Pair.IsOnline ? "Online" : "Offline");
-            UiSharedService.ColorText(status, (Pair.IsVisible || Pair.IsOnline) ? ImGuiColors.HealerGreen : ImGuiColors.DalamudRed);
-            if (Pair.IsVisible)
+            string status = CurrentPair.IsVisible ? "Visible" : (CurrentPair.IsOnline ? "Online" : "Offline");
+            UiSharedService.ColorText(status, (CurrentPair.IsVisible || CurrentPair.IsOnline) ? ImGuiColors.HealerGreen : ImGuiColors.DalamudRed);
+            if (CurrentPair.IsVisible)
             {
                 ImGui.SameLine();
-                ImGui.TextUnformatted($"({Pair.PlayerName})");
+                ImGui.TextUnformatted($"({CurrentPair.PlayerName})");
             }
-            if (Pair.UserPair != null)
+            if (CurrentPair.UserPair != null)
             {
                 ImGui.TextUnformatted("Directly paired");
-                if (Pair.UserPair.OwnPermissions.IsPaused())
+                if (CurrentPair.UserPair.OwnPermissions.IsPaused())
                 {
                     ImGui.SameLine();
                     UiSharedService.ColorText("You: paused", ImGuiColors.DalamudYellow);
                 }
-                if (Pair.UserPair.OtherPermissions.IsPaused())
+                if (CurrentPair.UserPair.OtherPermissions.IsPaused())
                 {
                     ImGui.SameLine();
                     UiSharedService.ColorText("They: paused", ImGuiColors.DalamudYellow);
                 }
             }
 
-            if (Pair.UserPair?.Groups.Count > 0)
+            if (CurrentPair.UserPair?.Groups.Count > 0)
             {
                 ImGui.TextUnformatted("Paired through Syncshells:");
-                foreach (var group in Pair.UserPair.Groups)
+                foreach (var group in CurrentPair.UserPair.Groups)
                 {
-                    var groupNote = _serverManager.GetNoteForGid(Pair.ServerIndex, group);
+                    var groupNote = _serverManager.GetNoteForGid(CurrentPair.ServerIndex, group);
                     var groupName = _pairManager.GroupPairs.First(f => string.Equals(f.Key.GroupFullInfo.GID, group, StringComparison.Ordinal)).Key.GroupFullInfo.GroupAliasOrGID;
                     var groupString = string.IsNullOrEmpty(groupNote) ? groupName : $"{groupNote} ({groupName})";
                     ImGui.TextUnformatted("- " + groupString);

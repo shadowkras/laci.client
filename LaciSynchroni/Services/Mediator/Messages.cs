@@ -68,7 +68,7 @@ public record PauseMessage(int ServerIndex, UserData UserData) : MessageBase;
 public record UserAddPairMessage(int ServerIndex, UserData UserData) : MessageBase;
 public record ProfilePopoutToggle(Pair? Pair) : MessageBase;
 public record CompactUiChange(Vector2 Size, Vector2 Position) : MessageBase;
-public record ProfileOpenStandaloneMessage(Pair Pair) : MessageBase;
+public record ProfileOpenStandaloneMessage(IEnumerable<Pair> Pairs) : MessageBase;
 public record RemoveWindowMessage(WindowMediatorSubscriberBase Window) : MessageBase;
 public record RefreshUiMessage : MessageBase;
 public record OpenBanUserPopupMessage(Pair PairToBan, GroupFullInfoDto GroupFullInfoDto) : MessageBase;

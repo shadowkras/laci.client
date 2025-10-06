@@ -6,6 +6,7 @@ using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
+using System.ComponentModel.DataAnnotations;
 
 namespace LaciSynchroni.UI.Handlers;
 
@@ -154,7 +155,11 @@ public class IdDisplayHandler
 
             if (ImGui.IsItemClicked(ImGuiMouseButton.Middle))
             {
-                _mediator.Publish(new ProfileOpenStandaloneMessage(pair));
+                var pairList = new List<Pair>
+                {
+                    pair
+                };
+                _mediator.Publish(new ProfileOpenStandaloneMessage(pairList));
             }
         }
         else
@@ -246,7 +251,11 @@ public class IdDisplayHandler
 
     internal void OpenProfile(Pair entry)
     {
-        _mediator.Publish(new ProfileOpenStandaloneMessage(entry));
+        var pairList = new List<Pair>
+        {
+            entry
+        };
+        _mediator.Publish(new ProfileOpenStandaloneMessage(pairList));
     }
 
     private bool ShowGidInsteadOfName(GroupFullInfoDto group)
