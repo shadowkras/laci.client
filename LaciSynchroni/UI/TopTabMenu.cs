@@ -9,6 +9,7 @@ using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.UI.Components;
+using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI;
 using System.Numerics;
 
@@ -28,6 +29,7 @@ public class TopTabMenu
 
     private string _pairToAdd = string.Empty;
     private int _pairTabSelectedServer = 0;
+    private string _selectedServerName => _apiController.GetServerNameByIndex(_pairTabSelectedServer);
 
     private SelectedTab _selectedTab = SelectedTab.None;
     public TopTabMenu(SyncMediator syncMediator, ApiController apiController, PairManager pairManager, UiSharedService uiSharedService, ServerConfigurationManager serverConfigurationManager)
@@ -205,7 +207,7 @@ public class TopTabMenu
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.UserPlus, "Add"))
             {
-                // Adds pair for the current
+                // Adds pair for the current selected service
                 _ = _apiController.UserAddPairToServer(_pairTabSelectedServer, _pairToAdd);
                 _pairToAdd = string.Empty;
             }
@@ -245,7 +247,7 @@ public class TopTabMenu
                 ImGui.OpenPopup("Individual Pause");
             }
         }
-        UiSharedService.AttachToolTip("Globally resume or pause all individual pairs." + UiSharedService.TooltipSeparator
+        UiSharedService.AttachToolTip($"{_selectedServerName}: Resume or pause all individual pairs." + UiSharedService.TooltipSeparator
             + (_globalControlCountdown > 0 ? UiSharedService.TooltipSeparator + "Available again in " + _globalControlCountdown + " seconds." : string.Empty));
 
         ImGui.SameLine();
@@ -258,7 +260,7 @@ public class TopTabMenu
                 ImGui.OpenPopup("Individual Sounds");
             }
         }
-        UiSharedService.AttachToolTip("Globally enable or disable sound sync with all individual pairs."
+        UiSharedService.AttachToolTip($"{_selectedServerName}: Enable or disable sound sync with all individual pairs."
             + (_globalControlCountdown > 0 ? UiSharedService.TooltipSeparator + "Available again in " + _globalControlCountdown + " seconds." : string.Empty));
 
         ImGui.SameLine();
@@ -271,7 +273,7 @@ public class TopTabMenu
                 ImGui.OpenPopup("Individual Animations");
             }
         }
-        UiSharedService.AttachToolTip("Globally enable or disable animation sync with all individual pairs." + UiSharedService.TooltipSeparator
+        UiSharedService.AttachToolTip($"{_selectedServerName}: Enable or disable animation sync with all individual pairs." + UiSharedService.TooltipSeparator
             + (_globalControlCountdown > 0 ? UiSharedService.TooltipSeparator + "Available again in " + _globalControlCountdown + " seconds." : string.Empty));
 
         ImGui.SameLine();
@@ -284,9 +286,8 @@ public class TopTabMenu
                 ImGui.OpenPopup("Individual VFX");
             }
         }
-        UiSharedService.AttachToolTip("Globally enable or disable VFX sync with all individual pairs." + UiSharedService.TooltipSeparator
+        UiSharedService.AttachToolTip($"{_selectedServerName}: Enable or disable VFX sync with all individual pairs." + UiSharedService.TooltipSeparator
             + (_globalControlCountdown > 0 ? UiSharedService.TooltipSeparator + "Available again in " + _globalControlCountdown + " seconds." : string.Empty));
-
 
         PopupIndividualSetting("Individual Pause", "Unpause all individuals", "Pause all individuals",
             FontAwesomeIcon.Play, FontAwesomeIcon.Pause,
@@ -467,7 +468,13 @@ public class TopTabMenu
                         return perm;
                     }, StringComparer.Ordinal);
 
-                _ = _apiController.SetBulkPermissions(_pairTabSelectedServer, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                foreach (var serverIndex in _apiController.ConnectedServerIndexes)
+                {
+                    TaskHelpers.FireAndForget(async () =>
+                    {
+                        await _apiController.SetBulkPermissions(serverIndex, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                    });
+                }
             }
         }
         UiSharedService.AttachToolTip("Globally align syncshell permissions to suggested syncshell permissions." + UiSharedService.TooltipSeparator
@@ -545,6 +552,8 @@ public class TopTabMenu
     {
         if (ImGui.BeginPopup(popupTitle))
         {
+            ImGui.Text($"{_selectedServerName}");
+            ImGui.Separator();
             if (_uiSharedService.IconTextButton(enableIcon, enableText, null, true))
             {
                 _ = GlobalControlCountdown(10);
@@ -592,7 +601,13 @@ public class TopTabMenu
                         return actEnable(g.GroupFullInfo.GroupUserPermissions);
                     }, StringComparer.Ordinal);
 
-                _ = _apiController.SetBulkPermissions(_pairTabSelectedServer, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                foreach (var serverIndex in _apiController.ConnectedServerIndexes)
+                {
+                    TaskHelpers.FireAndForget(async () =>
+                    {
+                        await _apiController.SetBulkPermissions(serverIndex, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                    });
+                }
                 ImGui.CloseCurrentPopup();
             }
 
@@ -606,7 +621,13 @@ public class TopTabMenu
                         return actDisable(g.GroupFullInfo.GroupUserPermissions);
                     }, StringComparer.Ordinal);
 
-                _ = _apiController.SetBulkPermissions(_pairTabSelectedServer, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                foreach (var serverIndex in _apiController.ConnectedServerIndexes)
+                {
+                    TaskHelpers.FireAndForget(async () =>
+                    {
+                        await _apiController.SetBulkPermissions(serverIndex, new(new(StringComparer.Ordinal), bulkSyncshells)).ConfigureAwait(false);
+                    });
+                }
                 ImGui.CloseCurrentPopup();
             }
             ImGui.EndPopup();
