@@ -112,7 +112,7 @@ public class DrawUserPair
     {
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.WindowMaximize, "Open Permissions Window", _menuWidth, true))
         {
-            _mediator.Publish(new OpenPermissionWindow(_pair));
+            _displayHandler.OpenPermissions(_pair);
             ImGui.CloseCurrentPopup();
         }
         UiSharedService.AttachToolTip("Opens the Permissions Window which allows you to manage multiple permissions at once.");

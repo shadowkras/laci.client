@@ -258,6 +258,15 @@ public class IdDisplayHandler
         _mediator.Publish(new ProfileOpenStandaloneMessage(pairList));
     }
 
+    internal void OpenPermissions(Pair entry)
+    {
+        var pairList = new List<Pair>
+        {
+            entry
+        };
+        _mediator.Publish(new OpenPermissionWindowMessage(pairList));
+    }
+
     private bool ShowGidInsteadOfName(GroupFullInfoDto group)
     {
         _showIdForEntry.TryGetValue(group.GID, out var showidInsteadOfName);

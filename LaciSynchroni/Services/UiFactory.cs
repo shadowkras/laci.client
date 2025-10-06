@@ -46,9 +46,9 @@ public class UiFactory
             _uiSharedService, _serverConfigManager, _profileManager, _pairManager, pairs, _apiController, _performanceCollectorService);
     }
 
-    public PermissionWindowUI CreatePermissionPopupUi(Pair pair)
+    public PermissionWindowUI CreatePermissionPopupUi(IEnumerable<Pair> pairs)
     {
-        return new PermissionWindowUI(_loggerFactory.CreateLogger<PermissionWindowUI>(), pair,
-            _syncMediator, _uiSharedService, _apiController, _performanceCollectorService);
+        return new PermissionWindowUI(_loggerFactory.CreateLogger<PermissionWindowUI>(), pairs,
+            _syncMediator, _uiSharedService, _serverConfigManager, _apiController, _performanceCollectorService);
     }
 }

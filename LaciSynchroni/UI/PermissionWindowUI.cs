@@ -7,6 +7,8 @@ using LaciSynchroni.Common.Data.Extensions;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
+using LaciSynchroni.Services.ServerConfiguration;
+using LaciSynchroni.UI.Components;
 using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Logging;
@@ -15,20 +17,30 @@ namespace LaciSynchroni.UI;
 
 public class PermissionWindowUI : WindowMediatorSubscriberBase
 {
-    public Pair Pair { get; init; }
+    public Pair CurrentPair { get; set; }
 
     private readonly UiSharedService _uiSharedService;
     private readonly ApiController _apiController;
+    private readonly ServerConfigurationManager _serverManager;
     private UserPermissions _ownPermissions;
+    private IEnumerable<Pair> _currentPairs { get; set; }
+    private readonly ServerSelectorSmall _serverSelector;
+    private int _serverForProfile = 0;
+    private bool _singleProfile => _currentPairs.Count() == 1;
 
-    public PermissionWindowUI(ILogger<PermissionWindowUI> logger, Pair pair, SyncMediator mediator, UiSharedService uiSharedService,
-        ApiController apiController, PerformanceCollectorService performanceCollectorService)
-        : base(logger, mediator, "Permissions for " + pair.UserData.AliasOrUID + "###LaciSynchroniPermissions" + pair.UserData.UID, performanceCollectorService)
+    public PermissionWindowUI(ILogger<PermissionWindowUI> logger, IEnumerable<Pair> pairs, SyncMediator mediator, UiSharedService uiSharedService,
+        ServerConfigurationManager serverManager, ApiController apiController, PerformanceCollectorService performanceCollectorService)
+        : base(logger, mediator, "Permissions for " + pairs.First().PlayerIdentification + "###LaciSynchroniPermissions", performanceCollectorService)
     {
-        Pair = pair;
+        _serverManager = serverManager;
         _uiSharedService = uiSharedService;
         _apiController = apiController;
-        _ownPermissions = pair.UserPair.OwnPermissions.DeepClone();
+        _currentPairs = pairs;
+        CurrentPair = pairs.First();
+        _ownPermissions = pairs.First().UserPair.OwnPermissions.DeepClone();
+
+        _serverSelector = new ServerSelectorSmall(index => _serverForProfile = index);
+
         Flags = ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoResize;
         SizeConstraints = new()
         {
@@ -40,6 +52,14 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
 
     protected override void DrawInternal()
     {
+        if (!_singleProfile)
+        {
+            var serverIndexes = _currentPairs.Select(p => p.ServerIndex).ToArray();
+            _serverSelector.Draw(_serverManager.GetServerNamesByIndexes(serverIndexes), serverIndexes, 512);
+            CurrentPair = _currentPairs?.FirstOrDefault(p => p.ServerIndex == _serverForProfile) ?? CurrentPair;
+            _ownPermissions = CurrentPair.UserPair.OwnPermissions.DeepClone();
+        }
+
         var sticky = _ownPermissions.IsSticky();
         var paused = _ownPermissions.IsPaused();
         var disableSounds = _ownPermissions.IsDisableSounds();
@@ -48,7 +68,14 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
         var style = ImGui.GetStyle();
         var indentSize = ImGui.GetFrameHeight() + style.ItemSpacing.X;
 
-        _uiSharedService.BigText("Permissions for " + Pair.UserData.AliasOrUID);
+        _uiSharedService.BigText("Permissions for " + CurrentPair.UserData.AliasOrUID);
+
+        if (_singleProfile)
+        {
+            var serverName = _apiController.GetServerNameByIndex(CurrentPair.ServerIndex);
+            ImGui.Text("@ " + serverName);
+        }
+        
         ImGuiHelpers.ScaledDummy(1f);
 
         if (ImGui.Checkbox("Preferred Permissions", ref sticky))
@@ -66,7 +93,7 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
         }
         _uiSharedService.DrawHelpText("Pausing will completely cease any sync with this user." + UiSharedService.TooltipSeparator
             + "Note: this is bidirectional, either user pausing will cease sync completely.");
-        var otherPerms = Pair.UserPair.OtherPermissions;
+        var otherPerms = CurrentPair.UserPair.OtherPermissions;
 
         var otherIsPaused = otherPerms.IsPaused();
         var otherDisableSounds = otherPerms.IsDisableSounds();
@@ -78,7 +105,7 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
             _uiSharedService.BooleanToColoredIcon(!otherIsPaused, false);
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.Text(Pair.UserData.AliasOrUID + " has " + (!otherIsPaused ? "not " : string.Empty) + "paused you");
+            ImGui.Text(CurrentPair.UserData.AliasOrUID + " has " + (!otherIsPaused ? "not " : string.Empty) + "paused you");
         }
 
         ImGuiHelpers.ScaledDummy(0.5f);
@@ -96,7 +123,7 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
             _uiSharedService.BooleanToColoredIcon(!otherDisableSounds, false);
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.Text(Pair.UserData.AliasOrUID + " has " + (!otherDisableSounds ? "not " : string.Empty) + "disabled sound sync with you");
+            ImGui.Text(CurrentPair.UserData.AliasOrUID + " has " + (!otherDisableSounds ? "not " : string.Empty) + "disabled sound sync with you");
         }
 
         if (ImGui.Checkbox("Disable Animations", ref disableAnimations))
@@ -110,7 +137,7 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
             _uiSharedService.BooleanToColoredIcon(!otherDisableAnimations, false);
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.Text(Pair.UserData.AliasOrUID + " has " + (!otherDisableAnimations ? "not " : string.Empty) + "disabled animation sync with you");
+            ImGui.Text(CurrentPair.UserData.AliasOrUID + " has " + (!otherDisableAnimations ? "not " : string.Empty) + "disabled animation sync with you");
         }
 
         if (ImGui.Checkbox("Disable VFX", ref disableVfx))
@@ -124,22 +151,22 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
             _uiSharedService.BooleanToColoredIcon(!otherDisableVFX, false);
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
-            ImGui.Text(Pair.UserData.AliasOrUID + " has " + (!otherDisableVFX ? "not " : string.Empty) + "disabled VFX sync with you");
+            ImGui.Text(CurrentPair.UserData.AliasOrUID + " has " + (!otherDisableVFX ? "not " : string.Empty) + "disabled VFX sync with you");
         }
 
         ImGuiHelpers.ScaledDummy(0.5f);
         ImGui.Separator();
         ImGuiHelpers.ScaledDummy(0.5f);
 
-        bool hasChanges = _ownPermissions != Pair.UserPair.OwnPermissions;
+        bool hasChanges = _ownPermissions != CurrentPair.UserPair.OwnPermissions;
 
         using (ImRaii.Disabled(!hasChanges))
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Save, "Save"))
             {
-                _ = _apiController.SetBulkPermissions(Pair.ServerIndex, new(
+                _ = _apiController.SetBulkPermissions(CurrentPair.ServerIndex, new(
                     new(StringComparer.Ordinal)
                     {
-                        { Pair.UserData.UID, _ownPermissions }
+                        { CurrentPair.UserData.UID, _ownPermissions }
                     },
                     new(StringComparer.Ordinal)
                 ));
@@ -155,23 +182,23 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
         using (ImRaii.Disabled(!hasChanges))
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Undo, "Revert"))
             {
-                _ownPermissions = Pair.UserPair.OwnPermissions.DeepClone();
+                _ownPermissions = CurrentPair.UserPair.OwnPermissions.DeepClone();
             }
         UiSharedService.AttachToolTip("Revert all changes");
 
         ImGui.SameLine();
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowsSpin, "Reset to Default"))
         {
-            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(Pair.ServerIndex)!;
-            _ownPermissions.SetSticky(Pair.IsDirectlyPaired || defaultPermissions.IndividualIsSticky);
+            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(CurrentPair.ServerIndex)!;
+            _ownPermissions.SetSticky(CurrentPair.IsDirectlyPaired || defaultPermissions.IndividualIsSticky);
             _ownPermissions.SetPaused(false);
-            _ownPermissions.SetDisableVFX(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualVFX : defaultPermissions.DisableGroupVFX);
-            _ownPermissions.SetDisableSounds(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualSounds : defaultPermissions.DisableGroupSounds);
-            _ownPermissions.SetDisableAnimations(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualAnimations : defaultPermissions.DisableGroupAnimations);
-            _ = _apiController.SetBulkPermissions(Pair.ServerIndex, new(
+            _ownPermissions.SetDisableVFX(CurrentPair.IsDirectlyPaired ? defaultPermissions.DisableIndividualVFX : defaultPermissions.DisableGroupVFX);
+            _ownPermissions.SetDisableSounds(CurrentPair.IsDirectlyPaired ? defaultPermissions.DisableIndividualSounds : defaultPermissions.DisableGroupSounds);
+            _ownPermissions.SetDisableAnimations(CurrentPair.IsDirectlyPaired ? defaultPermissions.DisableIndividualAnimations : defaultPermissions.DisableGroupAnimations);
+            _ = _apiController.SetBulkPermissions(CurrentPair.ServerIndex, new(
                 new(StringComparer.Ordinal)
                 {
-                    { Pair.UserData.UID, _ownPermissions }
+                    { CurrentPair.UserData.UID, _ownPermissions }
                 },
                 new(StringComparer.Ordinal)
             ));

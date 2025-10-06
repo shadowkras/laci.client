@@ -37,7 +37,7 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
         ServerConfigurationManager serverManager, ProfileManager profileManager, PairManager pairManager, IEnumerable<Pair> pairs,
         ApiController apiController,
         PerformanceCollectorService performanceCollector)
-        : base(logger, mediator, "Sync Profile of " + pairs.First().PlayerName + "##LaciSynchroniStandaloneProfileUI", performanceCollector)
+        : base(logger, mediator, "Sync Profile of " + pairs.First().PlayerIdentification + "##LaciSynchroniStandaloneProfileUI", performanceCollector)
     {
         _uiSharedService = uiBuilder;
         _serverManager = serverManager;

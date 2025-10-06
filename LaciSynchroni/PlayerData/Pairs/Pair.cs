@@ -50,6 +50,7 @@ public class Pair
     public bool IsVisible => CachedPlayer?.IsVisible ?? false;
     public CharacterData? LastReceivedCharacterData { get; set; }
     public string? PlayerName => CachedPlayer?.PlayerName ?? string.Empty;
+    public string? PlayerIdentification => CachedPlayer?.PlayerName ?? GetNote() ?? UserData?.AliasOrUID;
     public long LastAppliedDataBytes => CachedPlayer?.LastAppliedDataBytes ?? -1;
     public long LastAppliedDataTris { get; set; } = -1;
     public long LastAppliedApproximateVRAMBytes { get; set; } = -1;
@@ -91,8 +92,11 @@ public class Pair
 
         args.AddMenuItem(new MenuItem()
         {
-            Name = reapplyDataSeString,
-            OnClicked = (a) => ApplyLastReceivedData(forced: true),
+            Name = changePermissions,
+            OnClicked = (a) =>
+            {
+                _mediator.Publish(new OpenPermissionWindowMessage(serverPairs.Select(p => p.Value)));
+            },
             UseDefaultPrefix = false,
             PrefixChar = 'L',
             PrefixColor = 526
@@ -100,8 +104,8 @@ public class Pair
 
         args.AddMenuItem(new MenuItem()
         {
-            Name = changePermissions,
-            OnClicked = (a) => _mediator.Publish(new OpenPermissionWindow(this)),
+            Name = reapplyDataSeString,
+            OnClicked = (a) => ApplyLastReceivedData(forced: true),
             UseDefaultPrefix = false,
             PrefixChar = 'L',
             PrefixColor = 526
