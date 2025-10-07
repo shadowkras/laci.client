@@ -9,6 +9,7 @@ using LaciSynchroni.Common.Dto.User;
 using LaciSynchroni.PlayerData.Factories;
 using LaciSynchroni.Services.Events;
 using LaciSynchroni.Services.Mediator;
+using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.Utils;
@@ -28,6 +29,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     private readonly SyncConfigService _configurationService;
     private readonly IContextMenu _dalamudContextMenu;
     private readonly PairFactory _pairFactory;
+    private Lazy<List<Pair>> _pairRequestsInternal;
     private Lazy<List<Pair>> _directPairsInternal;
     private Lazy<Dictionary<GroupFullInfoWithServer, List<Pair>>> _groupPairsInternal;
     private Lazy<Dictionary<Pair, List<GroupFullInfoDto>>> _pairsWithGroupsInternal;
@@ -44,11 +46,22 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         _directPairsInternal = DirectPairsLazy();
         _groupPairsInternal = GroupPairsLazy();
         _pairsWithGroupsInternal = PairsWithGroupsLazy();
+        _pairRequestsInternal = DirectPairRequestsLazy();
 
         _dalamudContextMenu.OnMenuOpened += DalamudContextMenuOnOnOpenGameObjectContextMenu;
+
+        Mediator.Subscribe<ConfirmAddDirectPairMessage>(this, (msg) =>
+        {
+            AcceptPairRequest(msg.ServerIndex, msg.UserData);
+        });
+        Mediator.Subscribe<DeclineAddDirectPairMessage>(this, (msg) =>
+        {
+            DeclinePairRequest(msg.ServerIndex, msg.UserData);
+        });
     }
 
     public List<Pair> DirectPairs => _directPairsInternal.Value;
+    public List<Pair> DirectPairRequests => _pairRequestsInternal.Value;
 
     public Dictionary<GroupFullInfoWithServer, List<Pair>> GroupPairs => _groupPairsInternal.Value;
     public Dictionary<ServerBasedGroupKey, GroupFullInfoDto> Groups => _allGroups.ToDictionary(k => k.Key, k => k.Value);
@@ -120,6 +133,44 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             LastAddedUser = _allClientPairs[key];
         _allClientPairs[key].ApplyLastReceivedData();
         RecreateLazy();
+    }
+
+    public void AddUserPairRequest(int serverIndex, UserData dto)
+    {
+        var key = BuildKey(dto, serverIndex);
+        if (!_directPairsInternal.Value.Any(p=> p.ServerIndex == serverIndex &&  string.Equals(dto.AliasOrUID,p.UserData.AliasOrUID, StringComparison.CurrentCultureIgnoreCase)))
+        {
+            var pairInfo = new UserFullPairDto(dto,
+                IndividualPairStatus.PairRequested, new List<string>(), UserPermissions.Paused, UserPermissions.Paused);
+            _allClientPairs[key] = _pairFactory.Create(pairInfo, serverIndex);
+        }
+        else
+        {
+            _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.None;
+            _allClientPairs[key].ApplyLastReceivedData();
+        }
+
+        RecreateLazy();
+    }
+
+    public void AcceptPairRequest(int serverIndex, UserData dto)
+    {
+        var key = BuildKey(dto, serverIndex);
+        if (_allClientPairs.ContainsKey(key))
+        {
+            Mediator.Publish(new UserAddPairMessage(serverIndex, dto));
+
+            _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.OneSided;
+            LastAddedUser = _allClientPairs[key];
+            _allClientPairs[key].ApplyLastReceivedData();
+
+            RecreateLazy();
+        }
+    }
+
+    public void DeclinePairRequest(int serverIndex, UserData dto)
+    {
+        RemoveUserPair(new UserDto(dto), serverIndex);
     }
 
     public void ClearPairs(int serverIndex)
@@ -300,6 +351,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         {
             pair.UserPair.IndividualPairStatus = IndividualPairStatus.None;
 
+            //TODO Verify why users are removed even though they share a group/syncshell.
             if (!pair.HasAnyConnection())
             {
                 pair.MarkOffline();
@@ -450,7 +502,10 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     }
 
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)
-        .Where(k => k.IndividualPairStatus != IndividualPairStatus.None).ToList());
+        .Where(k => k.IndividualPairStatus is IndividualPairStatus.OneSided or IndividualPairStatus.Bidirectional).ToList());
+
+    private Lazy<List<Pair>> DirectPairRequestsLazy() => new(() => _allClientPairs.Select(k => k.Value)
+        .Where(k => k.IndividualPairStatus == IndividualPairStatus.PairRequested).ToList());
 
     private void DisposePairs(int? serverIndex)
     {
@@ -553,6 +608,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     private void RecreateLazy()
     {
         _directPairsInternal = DirectPairsLazy();
+        _pairRequestsInternal = DirectPairRequestsLazy();
         _groupPairsInternal = GroupPairsLazy();
         _pairsWithGroupsInternal = PairsWithGroupsLazy();
         Mediator.Publish(new RefreshUiMessage());

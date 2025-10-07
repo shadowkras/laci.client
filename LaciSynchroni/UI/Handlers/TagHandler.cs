@@ -11,6 +11,7 @@ public class TagHandler
     public const string CustomOnlineTag = "Laci_Online";
     public const string CustomUnpairedTag = "Laci_Unpaired";
     public const string CustomVisibleTag = "Laci_Visible";
+    public const string CustomPairRequestTag = "Laci_PairRequest";
     private readonly ServerConfigurationManager _serverConfigurationManager;
 
     public TagHandler(ServerConfigurationManager serverConfigurationManager)

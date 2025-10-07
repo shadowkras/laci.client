@@ -21,6 +21,7 @@ public class DrawCustomTag(
         TagHandler.CustomOnlineTag => false,
         TagHandler.CustomOfflineTag => false,
         TagHandler.CustomVisibleTag => false,
+        TagHandler.CustomPairRequestTag => false,
         TagHandler.CustomAllTag => true,
         TagHandler.CustomOfflineSyncshellTag => false,
         _ => throw new InvalidOperationException("Can only render custom tags")
@@ -40,6 +41,7 @@ public class DrawCustomTag(
             TagHandler.CustomOfflineSyncshellTag => FontAwesomeIcon.Unlink,
             TagHandler.CustomVisibleTag => FontAwesomeIcon.Eye,
             TagHandler.CustomAllTag => FontAwesomeIcon.User,
+            TagHandler.CustomPairRequestTag => FontAwesomeIcon.Flag,
             _ => throw new InvalidOperationException("Can only render custom tags")
         };
 
@@ -65,6 +67,7 @@ public class DrawCustomTag(
             TagHandler.CustomOfflineTag => "Offline / Paused by other",
             TagHandler.CustomOfflineSyncshellTag => "Offline Syncshell Users",
             TagHandler.CustomVisibleTag => "Visible",
+            TagHandler.CustomPairRequestTag => "Pair Requests",
             TagHandler.CustomAllTag => "Users",
             _ => throw new InvalidOperationException("Can only render custom pairs"),
         };

@@ -113,15 +113,19 @@ public partial class SyncHubClient
 
     public Task Client_ReceivePairingMessage(UserDto dto)
     {
-        Logger.LogDebug("Got a request to pair from {uid}", dto.User.UID);
+        Logger.LogDebug("Got a request to pair from {Uid}", dto.User.UID);
         var pair = _pairManager.GetPairByUID(ServerIndex, dto.User.UID);
-        if (pair == null) return Task.CompletedTask;
+        if (pair == null) 
+            return Task.CompletedTask;
+
         var player = string.IsNullOrEmpty(pair.PlayerName) ? dto.User.AliasOrUID : pair.PlayerName;
-        Logger.LogDebug("Got a request to pair from {uid} mapping to {player}.", dto.User.UID, player);
+        Logger.LogDebug("Got a request to pair from {Uid} mapping to {Player}.", dto.User.UID, player);
+        
         if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
         {
+            _pairManager.AddUserPairRequest(ServerIndex, dto.User);
             Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
-                $"Player {player} would like to pair. To accept, right click their character, or use the triple-dot menu next to their name, and select \"Pair individually\".", NotificationType.Info, TimeSpan.FromSeconds(15)));
+                $"Player {player} would like to pair. Their UID is {dto.User.AliasOrUID}.", NotificationType.Info, TimeSpan.FromSeconds(15)));
         }
         return Task.CompletedTask;
     }

@@ -41,8 +41,10 @@ public class Pair
 
     public bool HasCachedPlayer => CachedPlayer != null && !string.IsNullOrEmpty(CachedPlayer.PlayerName) && _onlineUserIdentDto != null;
     public IndividualPairStatus IndividualPairStatus => UserPair.IndividualPairStatus;
-    public bool IsDirectlyPaired => IndividualPairStatus != IndividualPairStatus.None;
+    public bool IsDirectlyPaired => IndividualPairStatus is IndividualPairStatus.OneSided or IndividualPairStatus.Bidirectional;
     public bool IsOneSidedPair => IndividualPairStatus == IndividualPairStatus.OneSided;
+    public bool IsPairRequested => IndividualPairStatus == IndividualPairStatus.PairRequested;
+
     public bool IsOnline => CachedPlayer != null;
 
     public bool IsPaired => IndividualPairStatus == IndividualPairStatus.Bidirectional || UserPair.Groups.Any();
@@ -221,7 +223,7 @@ public class Pair
 
     public bool HasAnyConnection()
     {
-        return UserPair.Groups.Any() || UserPair.IndividualPairStatus != IndividualPairStatus.None;
+        return UserPair.Groups.Any() || UserPair.IndividualPairStatus is IndividualPairStatus.OneSided or IndividualPairStatus.Bidirectional;
     }
 
     public void MarkOffline(bool wait = true)

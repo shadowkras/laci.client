@@ -45,6 +45,7 @@ public class ServerConfigurationManager
     public IEnumerable<int> ServerIndexes => _serverConfigService.Current.ServerStorage.Select((_, i) => i);
 
     public bool AnyServerConfigured => _serverTagConfig.Current.ServerTagStorage.Count > 0;
+    public bool AnyServerEnabledPairNotifications => _serverConfigService.Current.ServerStorage.Any(p=> p.ShowPairingRequestNotification);
     public bool SendCensusData
     {
         get

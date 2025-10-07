@@ -827,6 +827,23 @@ public class CompactUi : WindowMediatorSubscriberBase
         bool FilterOfflineSyncshellUsers(KeyValuePair<Pair, List<GroupFullInfoDto>> u)
             => (!u.Key.IsDirectlyPaired && !u.Key.IsOnline && !u.Key.UserPair.OwnPermissions.IsPaused());
 
+        if (_serverConfigManager.AnyServerEnabledPairNotifications)
+        {
+            var allDirectPairRequests = _pairManager.DirectPairRequests
+                .ToDictionary(k => k);
+
+            var allPairRequests = allDirectPairRequests
+                .Select(k => k.Key)
+                .ToImmutableList();
+            var filteredVisiblePairs = filteredPairs
+                .Where(p=> allDirectPairRequests.Any(a=> string.Equals(a.Value.UserData.AliasOrUID, p.Key.UserData.AliasOrUID, StringComparison.CurrentCultureIgnoreCase)))
+                .OrderByDescending(u => u.Key.IsVisible)
+                .ThenByDescending(u => u.Key.IsOnline)
+                .ThenBy(AlphabeticalSort, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(u => u.Key, u => u.Value);
+            drawFolders.Add(_drawEntityFactory.CreateDrawTagFolderForCustomTag(TagHandler.CustomPairRequestTag, filteredVisiblePairs, allPairRequests));
+        }
+
         if (_configService.Current.ShowVisibleUsersSeparately)
         {
             var allVisiblePairs = ImmutablePairList(allPairs
