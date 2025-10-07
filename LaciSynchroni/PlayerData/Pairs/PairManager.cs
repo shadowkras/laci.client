@@ -1,5 +1,6 @@
 ﻿using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
+using FFXIVClientStructs.FFXIV.Common.Lua;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Data.Comparer;
 using LaciSynchroni.Common.Data.Enum;
@@ -138,7 +139,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     public void AddUserPairRequest(int serverIndex, UserData dto)
     {
         var key = BuildKey(dto, serverIndex);
-        if (!_directPairsInternal.Value.Any(p=> p.ServerIndex == serverIndex &&  string.Equals(dto.AliasOrUID,p.UserData.AliasOrUID, StringComparison.CurrentCultureIgnoreCase)))
+        if (!_allClientPairs.ContainsKey(key))
         {
             var pairInfo = new UserFullPairDto(dto,
                 IndividualPairStatus.PairRequested, new List<string>(), UserPermissions.Paused, UserPermissions.Paused);
@@ -146,7 +147,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         }
         else
         {
-            _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.None;
+            _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.PairRequested;
             _allClientPairs[key].ApplyLastReceivedData();
         }
 
@@ -170,7 +171,18 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
 
     public void DeclinePairRequest(int serverIndex, UserData dto)
     {
-        RemoveUserPair(new UserDto(dto), serverIndex);
+        var key = BuildKey(dto, serverIndex);
+        if (!_allClientPairs.TryGetValue(key, out var pair) || !pair.HasAnyConnection())
+        {
+            //User is not directly paired and doesnt share any syncshell, removing
+            RemoveUserPair(new UserDto(dto), serverIndex);
+        }
+        else
+        {
+            _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.None;
+            _allClientPairs[key].ApplyLastReceivedData();
+            RecreateLazy();
+        }
     }
 
     public void ClearPairs(int serverIndex)
