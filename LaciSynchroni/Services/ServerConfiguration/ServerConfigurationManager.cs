@@ -293,6 +293,13 @@ public class ServerConfigurationManager
         _serverConfigService.Current.ServerStorage.Add(serverStorage);
         Save();
     }
+    
+    internal void SetFirstServer(ServerStorage serverStorage)
+    {
+        _serverConfigService.Current.ServerStorage.Clear();
+        _serverConfigService.Current.ServerStorage.Add(serverStorage);
+        Save();
+    }
 
     internal void AddTag(int serverIndex, string tag)
     {
