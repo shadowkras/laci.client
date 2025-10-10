@@ -84,15 +84,16 @@ public partial class SyncHubClient
 
     public Task Client_ReceiveServerMessage(MessageSeverity messageSeverity, string message)
     {
+        var serverName = ServerToUse.ServerName;
         switch (messageSeverity)
         {
             case MessageSeverity.Error:
-                Mediator.Publish(new NotificationMessage("Warning from " + ServerToUse.ServerName, message,
+                Mediator.Publish(new NotificationMessage("Warning from " + serverName, $"({serverName}) {message}",
                     NotificationType.Error, TimeSpan.FromSeconds(7.5)));
                 break;
 
             case MessageSeverity.Warning:
-                Mediator.Publish(new NotificationMessage("Warning from " + ServerToUse.ServerName, message,
+                Mediator.Publish(new NotificationMessage("Warning from " + serverName, $"({serverName}) {message}",
                     NotificationType.Warning, TimeSpan.FromSeconds(7.5)));
                 break;
 
@@ -103,7 +104,7 @@ public partial class SyncHubClient
                     break;
                 }
 
-                Mediator.Publish(new NotificationMessage("Info from " + ServerToUse.ServerName, message,
+                Mediator.Publish(new NotificationMessage("Info from " + serverName, $"({serverName}) {message}",
                     NotificationType.Info, TimeSpan.FromSeconds(5)));
                 break;
         }
