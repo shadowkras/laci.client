@@ -1391,10 +1391,10 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                 ImGui.Separator();
 
-                var isServerConnected = _apiController.IsServerConnected(_lastSelectedServerIndex);
+                var isServerConnected = _apiController.AnyServerConnected;
                 if (isServerConnected)
                 {
-                    UiSharedService.ColorTextWrapped($"To delete the {serverName} service you need to disconnect from the service.", ImGuiColors.DalamudYellow);
+                    UiSharedService.ColorTextWrapped($"To delete the {serverName} service you need to disconnect from all services.", ImGuiColors.DalamudYellow);
                 }
 
                 using (ImRaii.Disabled(isServerConnected))
