@@ -239,9 +239,13 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     }
 
     public int GetVisibleUserCountAcrossAllServers() => _allClientPairs
+        .DistinctBy(p => p.Value.PlayerName)
         .Count(p => p.Value.IsVisible);
 
-    public int GetVisibleUserCount(int serverIndex) => _allClientPairs.Where(p=> p.Key.ServerIndex == serverIndex).Count(p => p.Value.IsVisible);
+    public int GetVisibleUserCount(int serverIndex) => _allClientPairs
+        .Where(p=> p.Key.ServerIndex == serverIndex)
+        .DistinctBy(p => p.Value.PlayerName)
+        .Count(p => p.Value.IsVisible);
 
     public List<ServerBasedUserKey> GetVisibleUsers(int serverIndex) =>
     [
