@@ -15,6 +15,7 @@ public class ServerStorage
     public bool EnableObfuscationDownloadedFiles { get; set; } = true;
     public bool UseAlternativeFileUpload { get; set; } = false;
     public bool ShowPairingRequestNotification { get; set; } = false;
+    public bool BypassVersionCheck { get; set; } = false;
     public bool UseOAuth2 { get; set; } = false;
     public string? OAuthToken { get; set; } = null;
     public HttpTransportType HttpTransportType { get; set; } = HttpTransportType.WebSockets;
