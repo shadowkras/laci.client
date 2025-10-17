@@ -27,10 +27,25 @@ public partial class SyncHubClient
         }
     }
 
+    public async Task UserAddPair(UserDto user)
+    {
+        if (!IsConnected) return;
+
+        await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+    }
+
     public async Task UserAddPair(UserDto user, bool? pairingNotice = false)
     {
         if (!IsConnected) return;
-        await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false);
+
+        if (!pairingNotice.HasValue || !pairingNotice.Value)
+        {
+            await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+        }
+        else
+        {
+            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility with PlayerSync
+        }
     }
 
     public async Task UserDelete()
