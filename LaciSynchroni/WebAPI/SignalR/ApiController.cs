@@ -356,5 +356,14 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             .Select(client => client.DisposeConnectionAsync());
         await Task.WhenAll(disposeTasks).ConfigureAwait(false);
     }
+
+    public ConnectionDto? GetConnectionDto(ServerIndex serverIndex)
+    {
+        if (!IsServerConnected(serverIndex))
+        {
+            return null;
+        }
+        return _syncClients[serverIndex].ConnectionDto;
+    }
 }
 #pragma warning restore MA0040
