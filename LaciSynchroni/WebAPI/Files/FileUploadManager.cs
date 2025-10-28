@@ -166,7 +166,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
     private async Task UploadFile(int serverIndex, string serverName, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
     {
-        Logger.LogInformation("[{hash}] Uploading {size}", fileHash, UiSharedService.ByteToString(compressedFile.Length));
+        Logger.LogInformation("[{Hash}] Uploading {Size} to {ServerName}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverName);
 
         var serverInfo = _serverManager.GetServerByIndex(serverIndex);
 
@@ -282,9 +282,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-            var compressedSize = uploadsForThisServer.Sum(c => c.Total);
-            Logger.LogDebug("Upload complete, compressed {size} to {compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
-        }
+        var compressedSize = uploadsForThisServer.Sum(c => c.Total);
+        Logger.LogDebug("Upload complete to {ServerName}, compressed {Size} to {Compressed}", serverName, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
 
         foreach (var file in unverifiedUploadHashes.Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))
         {
