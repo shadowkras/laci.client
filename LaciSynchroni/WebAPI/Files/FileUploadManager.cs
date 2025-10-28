@@ -27,6 +27,10 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
     /// One Cancellation token per server, since we can concurrently upload to each server connected.
     /// </summary>
     private readonly ConcurrentDictionary<ServerIndex, CancellationTokenSource> _cancellationTokens = new();
+    /// <summary>
+    /// Per-server upload tracking to prevent race conditions during concurrent uploads.
+    /// </summary>
+    private readonly ConcurrentDictionary<ServerIndex, List<FileTransfer>> _currentUploads = new();
 
     public FileUploadManager(ILogger<FileUploadManager> logger, SyncMediator mediator,
         FileTransferOrchestrator orchestrator,
@@ -43,7 +47,18 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         });
     }
 
-    public List<FileTransfer> CurrentUploads { get; } = [];
+    /// <summary>
+    /// Returns all uploads across all servers. Thread-safe aggregate view.
+    /// </summary>
+    public List<FileTransfer> CurrentUploads => _currentUploads.Values.SelectMany(x => x).ToList();
+
+    /// <summary>
+    /// Gets the upload list for a specific server. Returns a new empty list if none exists.
+    /// </summary>
+    private List<FileTransfer> GetServerUploads(ServerIndex serverIndex)
+    {
+        return _currentUploads.GetOrAdd(serverIndex, _ => []);
+    }
 
     public async Task DeleteAllFiles(int serverIndex)
     {
@@ -151,7 +166,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
     private async Task UploadFile(int serverIndex, string serverName, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
     {
-        Logger.LogInformation("[{Hash}] Uploading {Size} to {ServerName}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverName);
+        Logger.LogInformation("[{hash}] Uploading {size}", fileHash, UiSharedService.ByteToString(compressedFile.Length));
 
         var serverInfo = _serverManager.GetServerByIndex(serverIndex);
 
@@ -190,9 +205,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         {
             try
             {
-                var fileTransfer = CurrentUploads.FirstOrDefault(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerIndex == serverIndex);
-                if(fileTransfer is not null)
-                    fileTransfer.Transferred = prog.Uploaded;
+                CurrentUploads.Single(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerIndex == serverIndex).Transferred = prog.Uploaded;
             }
             catch (Exception ex)
             {
@@ -220,11 +233,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
         var filesToUpload = await FilesSend(serverIndex, [.. unverifiedUploadHashes], visiblePlayers.Select(p => p.UID).ToList(), uploadToken).ConfigureAwait(false);
 
+        var serverUploads = GetServerUploads(serverIndex);
         foreach (var file in filesToUpload.Where(f => !f.IsForbidden).DistinctBy(f => f.Hash))
         {
             try
             {
-                CurrentUploads.Add(new UploadFileTransfer(file, serverIndex)
+                serverUploads.Add(new UploadFileTransfer(file, serverIndex)
                 {
                     Total = new FileInfo(_fileDbManager.GetFileCacheByHash(file.Hash)!.ResolvedFilepath).Length,
                 });
@@ -248,74 +262,36 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file.Hash] = DateTime.UtcNow;
         }
 
-        var totalSize = CurrentUploads.Sum(c => c.Total);
+        var totalSize = CurrentUploads.Where(c => c.ServerIndex == serverIndex).Sum(c => c.Total);
         Logger.LogDebug("Compressing and uploading files");
-
-        // Run uploads in parallel with retry on concurrency exception
-        var uploadTasks = CurrentUploads
-            .Where(f => f.CanBeTransferred && !f.IsTransferred && f.ServerIndex == serverIndex)
-            .Select(file => UploadWithRetry(serverIndex, serverName, file, uploadToken))
-            .ToList();
-
-        await Task.WhenAll(uploadTasks).ConfigureAwait(false);
-
-        if (CurrentUploads.Any())
+        Task uploadTask = Task.CompletedTask;
+        foreach (var file in CurrentUploads.Where(f => f.ServerIndex == serverIndex && f.CanBeTransferred && !f.IsTransferred).ToList())
         {
-            var compressedSize = CurrentUploads.Sum(c => c.Total);
-            Logger.LogDebug("Upload complete, compressed {Size} to {Compressed}",
-                UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
+            Logger.LogDebug("[{hash}] Compressing", file);
+            var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
+            CurrentUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerIndex == serverIndex).Total = data.Item2.Length;
+            Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
+            await uploadTask.ConfigureAwait(false);
+            uploadTask = UploadFile(serverIndex, data.Item2, file.Hash, true, uploadToken);
+            uploadToken.ThrowIfCancellationRequested();
         }
 
-        foreach (var file in unverifiedUploadHashes
-            .Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))
+        var uploadsForThisServer = CurrentUploads.Where(c => c.ServerIndex == serverIndex).ToList();
+        if (uploadsForThisServer.Any())
         {
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-        CurrentUploads.Clear();
-    }
-
-    private async Task UploadWithRetry(int serverIndex, string serverName, FileTransfer file, CancellationToken uploadToken, int maxRetries = 5)
-    {
-        int attempt = 0;
-        while (attempt < maxRetries && !uploadToken.IsCancellationRequested)
-        {
-            try
-            {
-                Logger.LogDebug("[{Hash}] Compressing", file.Hash);
-
-                var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
-
-                var fileCurrentUpload = CurrentUploads.FirstOrDefault(e =>
-                    string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) &&
-                    e.ServerIndex == serverIndex);
-
-                if (fileCurrentUpload is not null)
-                    fileCurrentUpload.Total = data.Item2.Length;
-
-                Logger.LogDebug("[{Hash}] Starting upload on {ServerName} for {FilePath}",
-                    data.Item1,
-                    serverName,
-                    _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
-
-                await UploadFile(serverIndex, serverName, data.Item2, file.Hash, true, uploadToken).ConfigureAwait(false);
-
-                return; // success
-            }
-            catch (HubException ex) when (ex.Message.Contains("Concurrency limit exceeded"))
-            {
-                attempt++;
-                Logger.LogWarning("[{Hash}] Concurrency limit on {ServerName} reached. Retrying in 5 seconds (Attempt {Attempt}/{MaxRetries})", file.Hash, serverName, attempt, maxRetries);
-                await Task.Delay(5000, uploadToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "[{Hash}] Error during upload to {ServerName}", file.Hash, serverName);
-                return;
-            }
+            var compressedSize = uploadsForThisServer.Sum(c => c.Total);
+            Logger.LogDebug("Upload complete, compressed {size} to {compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
         }
 
-        Logger.LogError("[{Hash}] Failed to upload after {Attempts} attempts due to concurrency limits.", file.Hash, attempt);
+        foreach (var file in unverifiedUploadHashes.Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))
+        {
+            _verifiedUploadedHashes[file] = DateTime.UtcNow;
+        }
+
+        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
     }
 
     private void CancelUpload(ServerIndex serverIndex)
@@ -330,7 +306,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             token.Cancel();
             token.Dispose();
         }
-        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
+        _currentUploads.TryRemove(serverIndex, out _);
     }
 
     private Uri RequireUriForServer(int serverIndex)
@@ -354,7 +330,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             c.Dispose();
         });
         _cancellationTokens.Clear();
-        CurrentUploads.Clear();
+        _currentUploads.Clear();
         _verifiedUploadedHashes.Clear();
     }
 
