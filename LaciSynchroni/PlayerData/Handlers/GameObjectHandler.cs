@@ -1,4 +1,5 @@
-﻿using Dalamud.Game.ClientState.Objects.Types;
+﻿using Dalamud.Game.ClientState.Objects.SubKinds;
+using Dalamud.Game.ClientState.Objects.Types;
 using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Scene;
@@ -138,6 +139,17 @@ public sealed class GameObjectHandler : DisposableMediatorSubscriberBase, IHighP
     public IGameObject? GetGameObject()
     {
         return _dalamudUtil.CreateGameObject(Address);
+    }
+
+    public ushort? GetHomeWorldId()
+    {
+        if (GetGameObject() is IPlayerCharacter player)
+        {
+            var worldId = player.HomeWorld.RowId;
+            return worldId == 0 ? null : (ushort?)worldId;
+        }
+
+        return null;
     }
 
     public void Invalidate()

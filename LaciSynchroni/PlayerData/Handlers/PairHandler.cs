@@ -121,6 +121,10 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
             if (_isVisible != value)
             {
                 _isVisible = value;
+                if (!value)
+                {
+                    Pair.UpdateVisibleHomeWorldId(null);
+                }
                 string text = "User Visibility Changed, now: " + (_isVisible ? "Is Visible" : "Is not Visible");
                 Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, GetType().Name,
                     EventSeverity.Informational, text)));
@@ -554,6 +558,11 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
             Logger.LogDebug("One-Time Initialized {this}", this);
             Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, GetType().Name, EventSeverity.Informational,
                 $"Initializing User For Character {pc.Name}")));
+        }
+
+        if (IsVisible && _charaHandler?.Address != nint.Zero)
+        {
+            Pair.UpdateVisibleHomeWorldId(_charaHandler.GetHomeWorldId());
         }
 
         if (_charaHandler?.Address != nint.Zero && !IsVisible)

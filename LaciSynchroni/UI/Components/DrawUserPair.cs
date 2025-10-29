@@ -61,7 +61,7 @@ public class DrawUserPair
     public Pair Pair => _pair;
     public UserFullPairDto UserPair => _pair.UserPair!;
 
-    public void DrawPairedClient()
+    public void DrawPairedClient(string? displayNameOverride = null)
     {
         using var id = ImRaii.PushId(GetType() + _id);
         var color = ImRaii.PushColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.FrameBgHovered), _wasHovered);
@@ -71,7 +71,7 @@ public class DrawUserPair
             ImGui.SameLine();
             var posX = ImGui.GetCursorPosX();
             var rightSide = DrawRightSide();
-            DrawName(posX, rightSide);
+            DrawName(posX, rightSide, displayNameOverride);
         }
         _wasHovered = ImGui.IsItemHovered();
         color.Dispose();
@@ -334,8 +334,16 @@ public class DrawUserPair
         return (_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0 && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes);
     }
 
-    private void DrawName(float leftSide, float rightSide)
+    private void DrawName(float leftSide, float rightSide, string? displayOverride)
     {
+        if (displayOverride != null)
+        {
+            ImGui.SameLine(leftSide);
+            ImGui.AlignTextToFramePadding();
+            ImGui.TextUnformatted(displayOverride);
+            return;
+        }
+
         _displayHandler.DrawPairText(_id, _pair, leftSide, () => rightSide - leftSide);
     }
 

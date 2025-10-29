@@ -68,19 +68,7 @@ public abstract class DrawFolderBase : IDrawFolder
         if (IsOpen)
         {
             using var indent = ImRaii.PushIndent(_uiSharedService.GetIconSize(FontAwesomeIcon.EllipsisV).X + ImGui.GetStyle().ItemSpacing.X, false);
-            if (DrawPairs.Any())
-            {
-                foreach (var item in DrawPairs)
-                {
-                    item.DrawPairedClient();
-                }
-            }
-            else
-            {
-                ImGui.TextUnformatted("No users (online)");
-            }
-
-            ImGui.Separator();
+            DrawOpenedContent();
         }
     }
 
@@ -95,6 +83,23 @@ public abstract class DrawFolderBase : IDrawFolder
     protected abstract bool IsOpen { get; }
 
     protected abstract void ToggleOpen();
+
+    protected virtual void DrawOpenedContent()
+    {
+        if (DrawPairs.Any())
+        {
+            foreach (var item in DrawPairs)
+            {
+                item.DrawPairedClient();
+            }
+        }
+        else
+        {
+            ImGui.TextUnformatted("No users (online)");
+        }
+
+        ImGui.Separator();
+    }
 
     private float DrawRightSideInternal()
     {

@@ -9,6 +9,7 @@ using LaciSynchroni.UI.Components;
 using LaciSynchroni.UI.Handlers;
 using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Immutable;
 
 namespace LaciSynchroni.UI;
@@ -26,12 +27,14 @@ public class DrawEntityFactory
     private readonly SelectTagForPairUi _selectTagForPairUi;
     private readonly TagHandler _tagHandler;
     private readonly IdDisplayHandler _uidDisplayHandler;
+    private readonly SyncConfigService _configService;
 
     public DrawEntityFactory(ILogger<DrawEntityFactory> logger, ApiController apiController, IdDisplayHandler uidDisplayHandler,
         SelectTagForPairUi selectTagForPairUi, SyncMediator mediator,
         TagHandler tagHandler, SelectPairForTagUi selectPairForTagUi,
         ServerConfigurationManager serverConfigurationManager, UiSharedService uiSharedService,
-        PlayerPerformanceConfigService playerPerformanceConfigService, CharaDataManager charaDataManager)
+        PlayerPerformanceConfigService playerPerformanceConfigService, CharaDataManager charaDataManager,
+        SyncConfigService configService)
     {
         _logger = logger;
         _apiController = apiController;
@@ -44,6 +47,7 @@ public class DrawEntityFactory
         _uiSharedService = uiSharedService;
         _playerPerformanceConfigService = playerPerformanceConfigService;
         _charaDataManager = charaDataManager;
+        _configService = configService;
     }
 
     public DrawFolderGroup CreateDrawGroupFolder(GroupFullInfoWithServer groupFullInfoDto,
@@ -64,11 +68,18 @@ public class DrawEntityFactory
             allPairs, _tagHandler, _apiController, _selectPairForTagUi, _uiSharedService, _serverConfigurationManager);
     }
 
-    public DrawCustomTag CreateDrawTagFolderForCustomTag(string specialTag,
+    public IDrawFolder CreateDrawTagFolderForCustomTag(string specialTag,
         Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
         IImmutableList<Pair> allPairs)
     {
-        return new(specialTag, filteredPairs.Select(u => CreateDrawPair(specialTag, u.Key, u.Value, null)).ToImmutableList(),
+        var drawPairs = filteredPairs.Select(u => CreateDrawPair(specialTag, u.Key, u.Value, null)).ToImmutableList();
+
+        if (string.Equals(specialTag, TagHandler.CustomVisibleTag, StringComparison.Ordinal))
+        {
+            return new DrawVisibleTagFolder(drawPairs, allPairs, _tagHandler, _uiSharedService, _apiController, _configService);
+        }
+
+        return new DrawCustomTag(specialTag, drawPairs,
             allPairs, _tagHandler, _uiSharedService);
     }
 
