@@ -4,12 +4,13 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace LaciSynchroni.Services.Mediator;
 
 public sealed class SyncMediator : IHostedService
 {
-    private readonly object _addRemoveLock = new();
+    private readonly Lock _addRemoveLock = new();
     private readonly ConcurrentDictionary<object, DateTime> _lastErrorTime = [];
     private readonly ILogger<SyncMediator> _logger;
     private readonly CancellationTokenSource _loopCts = new();

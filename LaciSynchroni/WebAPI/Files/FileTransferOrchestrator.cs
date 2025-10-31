@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Reflection;
+using System.Threading;
 
 namespace LaciSynchroni.WebAPI.Files;
 
@@ -19,7 +20,7 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
     private readonly ConcurrentDictionary<ServerIndex, Uri> _cdnUris = new();
     private readonly HttpClient _httpClient;
     private readonly SyncConfigService _syncConfig;
-    private readonly object _semaphoreModificationLock = new();
+    private readonly Lock _semaphoreModificationLock = new();
     private readonly MultiConnectTokenService _multiConnectTokenService;
     private int _availableDownloadSlots;
     private SemaphoreSlim _downloadSemaphore;

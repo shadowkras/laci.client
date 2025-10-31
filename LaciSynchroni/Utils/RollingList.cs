@@ -1,10 +1,11 @@
 ﻿using System.Collections;
+using System.Threading;
 
 namespace LaciSynchroni.Utils;
 
 public class RollingList<T> : IEnumerable<T>
 {
-    private readonly object _addLock = new();
+    private readonly Lock _addLock = new();
     private readonly LinkedList<T> _list = new();
 
     public RollingList(int maximumCount)

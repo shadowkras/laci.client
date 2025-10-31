@@ -76,7 +76,7 @@ public class DrawEntityFactory
 
         if (string.Equals(specialTag, TagHandler.CustomVisibleTag, StringComparison.Ordinal))
         {
-            return new DrawVisibleTagFolder(drawPairs, allPairs, _tagHandler, _uiSharedService, _apiController, _configService);
+            return new DrawVisibleTagFolder(drawPairs, allPairs, _tagHandler, _uiSharedService, _apiController, _configService, _mediator);
         }
 
         return new DrawCustomTag(specialTag, drawPairs,
