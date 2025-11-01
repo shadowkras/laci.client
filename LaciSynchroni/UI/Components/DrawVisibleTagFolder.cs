@@ -118,7 +118,7 @@ public class DrawVisibleTagFolder : DrawCustomTag
         return _cachedBuckets;
     }
 
-    private bool TryCreateKey(DrawUserPair drawPair, out VisibleGroupKey key)
+    private static bool TryCreateKey(DrawUserPair drawPair, out VisibleGroupKey key)
     {
         var playerName = drawPair.Pair.PlayerName;
         var homeWorld = drawPair.Pair.VisibleHomeWorldId;
@@ -308,12 +308,9 @@ public class DrawVisibleTagFolder : DrawCustomTag
             bool exceedsTris = config.TrisWarningThresholdThousands > 0 
                 && config.TrisWarningThresholdThousands * 1000 < pair.LastAppliedDataTris;
 
-            if (exceedsVram || exceedsTris)
+            if ((exceedsVram || exceedsTris) && (!pair.UserPair.OwnPermissions.IsSticky() || config.WarnOnPreferredPermissionsExceedingThresholds))
             {
-                if (!pair.UserPair.OwnPermissions.IsSticky() || config.WarnOnPreferredPermissionsExceedingThresholds)
-                {
-                    return member;
-                }
+                return member;
             }
         }
 
