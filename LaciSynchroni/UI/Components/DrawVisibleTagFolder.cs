@@ -3,6 +3,7 @@ using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Utility.Raii;
 using LaciSynchroni.Common.Data.Enum;
+using LaciSynchroni.Common.Data.Extensions;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
 using LaciSynchroni.SyncConfiguration;
@@ -22,6 +23,7 @@ public class DrawVisibleTagFolder : DrawCustomTag
     private readonly ApiController _apiController;
     private readonly SyncConfigService _configService;
     private readonly SyncMediator _mediator;
+    private readonly PlayerPerformanceConfigService _performanceConfigService;
 
     private static readonly VisibleGroupKeyComparer GroupKeyComparer = VisibleGroupKeyComparer.Instance;
     private IImmutableList<DrawUserPair>? _lastDrawPairsRef;
@@ -35,12 +37,14 @@ public class DrawVisibleTagFolder : DrawCustomTag
         UiSharedService uiSharedService,
         ApiController apiController,
         SyncConfigService configService,
-        SyncMediator mediator)
+        SyncMediator mediator,
+        PlayerPerformanceConfigService performanceConfigService)
         : base(TagHandler.CustomVisibleTag, drawPairs, allPairs, tagHandler, uiSharedService)
     {
         _apiController = apiController;
         _configService = configService;
         _mediator = mediator;
+        _performanceConfigService = performanceConfigService;
     }
 
     protected override void DrawOpenedContent()
@@ -175,6 +179,18 @@ public class DrawVisibleTagFolder : DrawCustomTag
                 _mediator.Publish(new TargetPairMessage(members[0].Pair));
             }
 
+            var warningMember = GetFirstMemberWithWarning(members);
+            if (warningMember != null)
+            {
+                ImGui.SameLine();
+                _uiSharedService.IconText(FontAwesomeIcon.ExclamationTriangle, ImGuiColors.DalamudYellow);
+                if (ImGui.IsItemHovered())
+                {
+                    var warningText = DrawUserPair.GetWarningTooltipText(warningMember.Pair, _performanceConfigService.Current, warningMember.Pair.UserPair!);
+                    UiSharedService.AttachToolTip(warningText);
+                }
+            }
+
             ImGui.SameLine();
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted(headerText);
@@ -194,7 +210,7 @@ public class DrawVisibleTagFolder : DrawCustomTag
         foreach (var member in members)
         {
             var serverName = _apiController.GetServerNameByIndex(member.Pair.ServerIndex);
-            member.DrawPairedClient(serverName, showTooltip: false, showIcon: false);
+            member.DrawPairedClient(serverName, showTooltip: false, showIcon: false, showWarning: false);
         }
     }
 
@@ -261,6 +277,47 @@ public class DrawVisibleTagFolder : DrawCustomTag
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    private DrawUserPair? GetFirstMemberWithWarning(List<DrawUserPair> members)
+    {
+        var config = _performanceConfigService.Current;
+        if (!config.ShowPerformanceIndicator)
+        {
+            return null;
+        }
+
+        foreach (var member in members)
+        {
+            var pair = member.Pair;
+            
+            if (pair.UserPair is null)
+            {
+                continue;
+            }
+            
+            if (config.UIDsToIgnore.Exists(uid => 
+                string.Equals(uid, pair.UserPair.User.Alias, StringComparison.Ordinal) || 
+                string.Equals(uid, pair.UserPair.User.UID, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            bool exceedsVram = config.VRAMSizeWarningThresholdMiB > 0 
+                && config.VRAMSizeWarningThresholdMiB * 1024 * 1024 < pair.LastAppliedApproximateVRAMBytes;
+            bool exceedsTris = config.TrisWarningThresholdThousands > 0 
+                && config.TrisWarningThresholdThousands * 1000 < pair.LastAppliedDataTris;
+
+            if (exceedsVram || exceedsTris)
+            {
+                if (!pair.UserPair.OwnPermissions.IsSticky() || config.WarnOnPreferredPermissionsExceedingThresholds)
+                {
+                    return member;
+                }
+            }
+        }
+
+        return null;
     }
 
     private sealed class GroupBucket

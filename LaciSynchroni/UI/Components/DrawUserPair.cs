@@ -12,6 +12,7 @@ using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
+using LaciSynchroni.SyncConfiguration.Configurations;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.UI.Handlers;
 using LaciSynchroni.WebAPI;
@@ -208,13 +209,33 @@ public class DrawUserPair
         return sb.ToString().TrimEnd();
     }
 
-    public void DrawPairedClient(string? displayNameOverride = null, bool showTooltip = true, bool showIcon = true)
+    public static string GetWarningTooltipText(Pair pair, PlayerPerformanceConfig config, Common.Dto.User.UserFullPairDto userPair)
+    {
+        string userWarningText = "WARNING: This user exceeds one or more of your defined thresholds:" + UiSharedService.TooltipSeparator;
+        bool shownVram = false;
+        if (config.VRAMSizeWarningThresholdMiB > 0
+            && config.VRAMSizeWarningThresholdMiB * 1024 * 1024 < pair.LastAppliedApproximateVRAMBytes)
+        {
+            shownVram = true;
+            userWarningText += $"Approx. VRAM Usage: Used: {UiSharedService.ByteToString(pair.LastAppliedApproximateVRAMBytes)}, Threshold: {config.VRAMSizeWarningThresholdMiB} MiB";
+        }
+        if (config.TrisWarningThresholdThousands > 0
+            && config.TrisWarningThresholdThousands * 1000 < pair.LastAppliedDataTris)
+        {
+            if (shownVram) userWarningText += Environment.NewLine;
+            userWarningText += $"Approx. Triangle count: Used: {pair.LastAppliedDataTris}, Threshold: {config.TrisWarningThresholdThousands * 1000}";
+        }
+
+        return userWarningText;
+    }
+
+    public void DrawPairedClient(string? displayNameOverride = null, bool showTooltip = true, bool showIcon = true, bool showWarning = true)
     {
         using var id = ImRaii.PushId(GetType() + _id);
         var color = ImRaii.PushColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.FrameBgHovered), _wasHovered);
         using (ImRaii.Child(GetType() + _id, new Vector2(UiSharedService.GetWindowContentRegionWidth() - ImGui.GetCursorPosX(), ImGui.GetFrameHeight())))
         {
-            DrawLeftSide(showTooltip, showIcon);
+            DrawLeftSide(showTooltip, showIcon, showWarning);
             ImGui.SameLine();
             var posX = ImGui.GetCursorPosX();
             var rightSide = DrawRightSide();
@@ -343,7 +364,7 @@ public class DrawUserPair
         }
     }
 
-    private void DrawLeftSide(bool showTooltip = true, bool showIcon = true)
+    private void DrawLeftSide(bool showTooltip = true, bool showIcon = true, bool showWarning = true)
     {
         string userPairText = string.Empty;
         ImGui.AlignTextToFramePadding();
@@ -433,7 +454,7 @@ public class DrawUserPair
             UiSharedService.AttachToolTip(GetTooltipText());
         }
 
-        if (_performanceConfigService.Current.ShowPerformanceIndicator
+        if (showWarning && _performanceConfigService.Current.ShowPerformanceIndicator
             && !_performanceConfigService.Current.UIDsToIgnore
                 .Exists(uid => string.Equals(uid, UserPair.User.Alias, StringComparison.Ordinal) || string.Equals(uid, UserPair.User.UID, StringComparison.Ordinal))
             && (IsVRamOverConfigWarnThreshold() || IsTrianglesOverConfigWarnThreshold())
@@ -443,19 +464,7 @@ public class DrawUserPair
 
             _uiSharedService.IconText(FontAwesomeIcon.ExclamationTriangle, ImGuiColors.DalamudYellow);
 
-            string userWarningText = "WARNING: This user exceeds one or more of your defined thresholds:" + UiSharedService.TooltipSeparator;
-            bool shownVram = false;
-            if (IsVRamOverConfigWarnThreshold())
-            {
-                shownVram = true;
-                userWarningText += $"Approx. VRAM Usage: Used: {UiSharedService.ByteToString(_pair.LastAppliedApproximateVRAMBytes)}, Threshold: {_performanceConfigService.Current.VRAMSizeWarningThresholdMiB} MiB";
-            }
-            if (IsTrianglesOverConfigWarnThreshold())
-            {
-                if (shownVram) userWarningText += Environment.NewLine;
-                userWarningText += $"Approx. Triangle count: Used: {_pair.LastAppliedDataTris}, Threshold: {_performanceConfigService.Current.TrisWarningThresholdThousands * 1000}";
-            }
-
+            var userWarningText = GetWarningTooltipText(_pair, _performanceConfigService.Current, UserPair);
             UiSharedService.AttachToolTip(userWarningText);
         }
 
