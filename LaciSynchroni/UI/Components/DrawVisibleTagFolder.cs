@@ -29,6 +29,7 @@ public class DrawVisibleTagFolder : DrawCustomTag
     private IImmutableList<DrawUserPair>? _lastDrawPairsRef;
     private List<GroupBucket>? _cachedBuckets;
     private readonly HashSet<VisibleGroupKey> _openGroups = new(GroupKeyComparer);
+    private readonly Dictionary<VisibleGroupKey, bool> _hoveredGroups = new(GroupKeyComparer);
 
     public DrawVisibleTagFolder(
         IImmutableList<DrawUserPair> drawPairs,
@@ -146,9 +147,14 @@ public class DrawVisibleTagFolder : DrawCustomTag
         var headerText = $"{displayName} ({serverCount} servers)";
 
         var isOpen = _openGroups.Contains(key);
+        var wasHovered = _hoveredGroups.TryGetValue(key, out var hovered) && hovered;
+        var color = ImRaii.PushColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.FrameBgHovered), wasHovered);
+
         using (ImRaii.Child($"visible-group-row-{key.WorldId}-{key.Name}", new System.Numerics.Vector2(UiSharedService.GetWindowContentRegionWidth() - ImGui.GetCursorPosX(), ImGui.GetFrameHeight()), false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
         {
-            ImGui.SetCursorPosX(0f);
+            ImGui.Dummy(new Vector2(0f, ImGui.GetFrameHeight()));
+            using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0f, 0f)))
+                ImGui.SameLine();
             var caretIcon = isOpen ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight;
 
             ImGui.AlignTextToFramePadding();
@@ -195,6 +201,8 @@ public class DrawVisibleTagFolder : DrawCustomTag
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted(headerText);
         }
+        color.Dispose();
+        _hoveredGroups[key] = ImGui.IsItemHovered();
 
         if (!isOpen)
         {
@@ -202,9 +210,8 @@ public class DrawVisibleTagFolder : DrawCustomTag
         }
 
         var caretWidth = _uiSharedService.GetIconSize(FontAwesomeIcon.CaretRight).X;
-        var eyeWidth = _uiSharedService.GetIconSize(FontAwesomeIcon.Eye).X;
         var spacing = ImGui.GetStyle().ItemSpacing.X;
-        var childIndent = caretWidth + spacing + eyeWidth + spacing;
+        var childIndent = caretWidth + spacing;
         
         using var indent = ImRaii.PushIndent(childIndent, false);
         foreach (var member in members)
