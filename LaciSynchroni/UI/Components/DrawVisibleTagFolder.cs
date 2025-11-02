@@ -152,9 +152,7 @@ public class DrawVisibleTagFolder : DrawCustomTag
 
         using (ImRaii.Child($"visible-group-row-{key.WorldId}-{key.Name}", new System.Numerics.Vector2(UiSharedService.GetWindowContentRegionWidth() - ImGui.GetCursorPosX(), ImGui.GetFrameHeight()), false, ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse))
         {
-            ImGui.Dummy(new Vector2(0f, ImGui.GetFrameHeight()));
-            using (ImRaii.PushStyle(ImGuiStyleVar.ItemSpacing, new Vector2(0f, 0f)))
-                ImGui.SameLine();
+            ImGui.SetCursorPosX(0f);
             var caretIcon = isOpen ? FontAwesomeIcon.CaretDown : FontAwesomeIcon.CaretRight;
 
             ImGui.AlignTextToFramePadding();
