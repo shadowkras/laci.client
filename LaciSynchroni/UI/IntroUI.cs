@@ -270,9 +270,6 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                 return;
             }
 
-            int serverIdx = 0;
-            var selectedServer = _serverConfigurationManager.GetServerByIndex(serverIdx);
-
             UiSharedService.DistanceSeparator();
             UiSharedService.TextWrapped($"You have configured {_serverConfigurationManager.GetServerNameByIndex(serverIdx)} as your Laci Synchroni service. You now have to configure login and authenticate yourself.");
             if (ImGui.Checkbox("Use Login with OAuth", ref _useOAuthLogin))

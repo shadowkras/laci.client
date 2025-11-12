@@ -363,7 +363,7 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         {
             return null;
         }
-        return _syncClients[serverIndex].ConnectionDto;
+        return _syncHubClients[serverIndex].ConnectionDto;
     }
 }
 #pragma warning restore MA0040
