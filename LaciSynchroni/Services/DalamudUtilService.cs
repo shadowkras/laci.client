@@ -560,6 +560,18 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
         return result;
     }
 
+    public string? GetWorldNameFromPlayerAddress(nint address)
+    {
+        if (address == nint.Zero) return null;
+
+        EnsureIsOnFramework();
+        var playerCharacter = _objectTable.OfType<IPlayerCharacter>().FirstOrDefault(p => p.Address == address);
+        if (playerCharacter == null) return null;
+
+        var worldId = (ushort)playerCharacter.HomeWorld.RowId;
+        return WorldData.Value.TryGetValue(worldId, out var worldName) ? worldName : null;
+    }
+
     private unsafe void CheckCharacterForDrawing(nint address, string characterName)
     {
         var gameObj = (GameObject*)address;

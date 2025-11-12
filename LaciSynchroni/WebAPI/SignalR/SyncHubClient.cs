@@ -110,6 +110,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             {
                 var sendPairNotification = _serverConfigurationManager.GetServerByIndex(ServerIndex)?.ShowPairingRequestNotification ?? false;
                 _ = UserAddPair(new UserDto(msg.UserData), sendPairNotification);
+
+                if(sendPairNotification)
+                    _ = TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
             }
         });
     }
@@ -541,6 +544,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         OnDownloadReady((guid) => _ = Client_DownloadReady(guid));
         OnReceiveServerMessage((sev, msg) => _ = Client_ReceiveServerMessage(sev, msg));
         OnReceivePairingMessage((dto) => _ = Client_ReceivePairingMessage(dto));
+        OnReceiveBroadcastPairRequest((dto) => _ = Client_ReceiveBroadcastPairRequest(dto));
         OnUpdateSystemInfo((dto) => _ = Client_UpdateSystemInfo(dto));
 
         OnUserSendOffline((dto) => _ = Client_UserSendOffline(dto));
@@ -693,6 +697,42 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             Logger.LogDebug("Pair online: {Entry}", entry);
             _pairManager.MarkPairOnline(entry, ServerIndex, sendNotif: false);
         }
+    }
+
+    public string GetDisplayNameByContentId(string hashedCid)
+    {
+        if (string.IsNullOrWhiteSpace(hashedCid))
+        {
+            return string.Empty;
+        }
+
+        var (name, address) = _dalamudUtil.FindPlayerByNameHash(hashedCid);
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var worldName = _dalamudUtil.GetWorldNameFromPlayerAddress(address);
+            return !string.IsNullOrWhiteSpace(worldName)
+                ? $"{name} @ {worldName}"
+                : name;
+        }
+
+        var pair = _pairManager
+            .GetOnlineUserPairs(ServerIndex)
+            .FirstOrDefault(p => string.Equals(p.Ident, hashedCid, StringComparison.Ordinal));
+
+        if (pair != null)
+        {
+            if (!string.IsNullOrWhiteSpace(pair.PlayerName))
+            {
+                return pair.PlayerName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(pair.UserData.AliasOrUID))
+            {
+                return pair.UserData.AliasOrUID;
+            }
+        }
+
+        return string.Empty;
     }
 
     public async Task DisposeConnectionAsync()

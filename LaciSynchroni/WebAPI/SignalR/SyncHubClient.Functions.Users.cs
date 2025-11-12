@@ -44,8 +44,14 @@ public partial class SyncHubClient
         }
         else
         {
-            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility with PlayerSync
+            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility.
         }
+    }
+
+    public async Task TryPairWithContentId(string otherCid)
+    {
+        if (!IsConnected) return;
+        await _connection!.SendAsync(nameof(TryPairWithContentId), otherCid).ConfigureAwait(false);
     }
 
     public async Task UserDelete()
