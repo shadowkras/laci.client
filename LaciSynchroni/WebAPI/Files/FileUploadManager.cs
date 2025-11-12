@@ -267,30 +267,29 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         Task uploadTask = Task.CompletedTask;
         foreach (var file in CurrentUploads.Where(f => f.ServerIndex == serverIndex && f.CanBeTransferred && !f.IsTransferred).ToList())
         {
-            Logger.LogDebug("[{hash}] Compressing", file);
+            Logger.LogDebug("[{Hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
             CurrentUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerIndex == serverIndex).Total = data.Item2.Length;
-            Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
+            Logger.LogDebug("[{Hash}] Starting upload for {FilePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
             await uploadTask.ConfigureAwait(false);
-            uploadTask = UploadFile(serverIndex, data.Item2, file.Hash, true, uploadToken);
+            uploadTask = UploadFile(serverIndex, serverName, data.Item2, file.Hash, true, uploadToken);
             uploadToken.ThrowIfCancellationRequested();
         }
 
-        var uploadsForThisServer = CurrentUploads.Where(c => c.ServerIndex == serverIndex).ToList();
-        if (uploadsForThisServer.Any())
+        if (serverUploads.Any())
+        {
+            await uploadTask.ConfigureAwait(false);
+
+            var compressedSize = serverUploads.Sum(c => c.Total);
+            Logger.LogDebug("Upload complete to {ServerName}, compressed {Size} to {Compressed}", serverName, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
+        }
+
+        foreach (var file in unverifiedUploadHashes.Where(c => !serverUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal))))
         {
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-        var compressedSize = uploadsForThisServer.Sum(c => c.Total);
-        Logger.LogDebug("Upload complete to {ServerName}, compressed {Size} to {Compressed}", serverName, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
-
-        foreach (var file in unverifiedUploadHashes.Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))
-        {
-            _verifiedUploadedHashes[file] = DateTime.UtcNow;
-        }
-
-        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
+        _currentUploads.TryRemove(serverIndex, out _);
     }
 
     private void CancelUpload(ServerIndex serverIndex)
