@@ -514,7 +514,8 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         var uniquePlayerPairs = _allClientPairs.Where(p=> p.Value.IsVisible && string.Equals(p.Value.PlayerName, targetName, StringComparison.CurrentCultureIgnoreCase))
             .Distinct();
 
-        uniquePlayerPairs.FirstOrDefault().Value.AddContextMenu(args, uniquePlayerPairs);
+        if(uniquePlayerPairs?.Any() ?? false)
+            uniquePlayerPairs.FirstOrDefault().Value.AddContextMenu(args, uniquePlayerPairs);
     }
 
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)
