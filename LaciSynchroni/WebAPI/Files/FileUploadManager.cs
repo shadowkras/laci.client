@@ -217,7 +217,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         streamContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         HttpResponseMessage response;
         if (!munged)
-            response = await _orchestrator.SendRequestStreamAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesUploadFullPath(uri, fileHash), streamContent, uploadToken).ConfigureAwait(false);
+            response = await _orchestrator.SendRequestStreamAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesUploadFullPath(uri, fileHash, GetTimeZoneUtcOffsetMinutes()), streamContent, uploadToken).ConfigureAwait(false);
         else
             response = await _orchestrator.SendRequestStreamAsync(serverIndex, HttpMethod.Post, FilesRoutes.ServerFilesUploadMunged(uri, fileHash), streamContent, uploadToken).ConfigureAwait(false);
         Logger.LogDebug("[{Hash}] Upload Status: {Status}", fileHash, response.StatusCode);
@@ -290,6 +290,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         }
 
         _currentUploads.TryRemove(serverIndex, out _);
+    }
+
+    private int GetTimeZoneUtcOffsetMinutes()
+    {
+            int result = LongitudinalRegion.FromLocalSystemTimeZone().UtcOffsetMinutes;
+            return result;
     }
 
     private void CancelUpload(ServerIndex serverIndex)

@@ -128,6 +128,12 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         return (byte)(byteOrEof ^ 42);
     }
 
+    private int GetTimeZoneUtcOffsetMinutes()
+    {
+        int result = LongitudinalRegion.FromLocalSystemTimeZone().UtcOffsetMinutes;
+        return result;
+    }
+
     /// <summary>
     /// Reads a block file header from the given filestream, optionally munging the bytes.
     /// </summary>
@@ -672,7 +678,13 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         {
             throw new InvalidOperationException("FileTransferManager is not initialized");
         }
-        var response = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, FilesRoutes.ServerFilesGetSizesFullPath(fileCdnUri), hashes, ct).ConfigureAwait(false);
+
+        var enableFileObfuscation = _serverManager.GetServerByIndex(serverIndex)?.EnableObfuscationDownloadedFiles ?? false;
+
+        Uri fileUri = enableFileObfuscation ? FilesRoutes.ServerFilesGetSizesFullPath(fileCdnUri) :
+                                              FilesRoutes.ServerFilesGetSizesFullPath(fileCdnUri, GetTimeZoneUtcOffsetMinutes());
+
+        var response = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, fileUri, hashes, ct).ConfigureAwait(false);
         return await response.Content.ReadFromJsonAsync<List<DownloadFileDto>>(cancellationToken: ct).ConfigureAwait(false) ?? [];
     }
 

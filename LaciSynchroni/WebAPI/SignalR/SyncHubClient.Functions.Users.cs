@@ -38,13 +38,13 @@ public partial class SyncHubClient
     {
         if (!IsConnected) return;
 
-        if (!pairingNotice.HasValue || !pairingNotice.Value)
+        if (pairingNotice == true)
         {
-            await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility.            
         }
         else
         {
-            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility.
+            await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
         }
     }
 

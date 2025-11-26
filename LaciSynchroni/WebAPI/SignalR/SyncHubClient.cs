@@ -604,6 +604,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             catch (Exception ex)
             {
                 Logger.LogError(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
+                this.Dispose();
             }
         }
     }
