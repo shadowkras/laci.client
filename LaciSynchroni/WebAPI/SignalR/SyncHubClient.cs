@@ -58,6 +58,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private CancellationTokenSource? _healthCheckTokenSource = new();
     private CancellationTokenSource? _connectionCancellationTokenSource;
     private bool _doNotNotifyOnNextInfo = false;
+    private int _healthCheckFailures = 0;
 
     public string AuthFailureMessage { get; private set; } = string.Empty;
     private string? _lastUsedToken;
@@ -595,6 +596,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                     break;
 
                 _ = await CheckClientHealth().ConfigureAwait(false);
+                _healthCheckFailures = 0;
             }
             catch (OperationCanceledException)
             {
@@ -604,7 +606,14 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             catch (Exception ex)
             {
                 Logger.LogError(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
-                this.Dispose();
+                _healthCheckFailures++;
+                if(_healthCheckFailures > 10)
+                {
+                    Logger.LogError("Too many health check failures to {ServerName}, reconnecting", ServerName);
+                    _doNotNotifyOnNextInfo = true;
+                    await CreateConnectionsAsync().ConfigureAwait(false);
+                    break;
+                }
             }
         }
     }
