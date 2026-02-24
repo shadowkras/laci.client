@@ -285,8 +285,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
         foreach (var downloadGroup in downloadGroups)
         {
-            _downloadStatus[downloadGroup.Key] = new FileDownloadStatus()
+            _downloadStatus[downloadGroup.Key] = new FileDownloadStatus(serverIndex)
             {
+                Hash = downloadGroup.FirstOrDefault(p=> p.Hash != null)?.Hash ?? string.Empty,
                 DownloadStatus = DownloadStatus.Initializing,
                 TotalBytes = downloadGroup.Sum(c => c.Total),
                 TotalFiles = 1,
@@ -453,8 +454,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         // Create download status trackers for the direct downloads
         foreach (var directDownload in directDownloads)
         {
-            _downloadStatus[directDownload.DownloadUri.AbsoluteUri!] = new FileDownloadStatus()
+            _downloadStatus[directDownload.DownloadUri.AbsoluteUri!] = new FileDownloadStatus(serverIndex)
             {
+                Hash = directDownload.Hash,
                 DownloadStatus = DownloadStatus.Initializing,
                 TotalBytes = directDownload.Total,
                 TotalFiles = 1,

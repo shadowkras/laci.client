@@ -649,7 +649,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         {
             ImGui.SameLine();
             _uiSharedService.IconText(FontAwesomeIcon.PersonCircleQuestion);
-            if (ImGui.IsItemHovered())
+            if (ImGui.IsWindowHovered() && ImGui.IsItemHovered())
             {
                 var unconvertedTextures = _characterAnalyzer.UnconvertedTextureCount;
 
@@ -736,7 +736,6 @@ public class CompactUi : WindowMediatorSubscriberBase
         if (currentUploads.Any())
         {
             var totalUploads = currentUploads.Count;
-
             var doneUploads = currentUploads.Count(c => c.IsTransferred);
             var totalUploaded = currentUploads.Sum(c => c.Transferred);
             var totalToUpload = currentUploads.Sum(c => c.Total);
@@ -747,6 +746,13 @@ public class CompactUi : WindowMediatorSubscriberBase
             ImGui.SameLine(_windowContentWidth - textSize.X);
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted(uploadText);
+
+            if(ImGui.IsWindowHovered() && ImGui.IsItemHovered())
+            {
+                var uploadToolTipText = string.Join(Environment.NewLine, currentUploads.Select(c =>
+                    $"({_serverConfigManager.GetServerNameByIndex(c.ServerIndex)}) {c.Hash}: {UiSharedService.ByteToString(c.Transferred)}/{UiSharedService.ByteToString(c.Total)}"));
+                UiSharedService.AttachToolTip(uploadToolTipText);
+            }
         }
         else
         {
@@ -767,12 +773,18 @@ public class CompactUi : WindowMediatorSubscriberBase
             var totalToDownload = currentDownloads.Sum(c => c.TotalBytes);
 
             ImGui.TextUnformatted($"{doneDownloads}/{totalDownloads}");
-            var downloadText =
-                $"({UiSharedService.ByteToString(totalDownloaded)}/{UiSharedService.ByteToString(totalToDownload)})";
+            var downloadText = $"({UiSharedService.ByteToString(totalDownloaded)}/{UiSharedService.ByteToString(totalToDownload)})";
             var textSize = ImGui.CalcTextSize(downloadText);
             ImGui.SameLine(_windowContentWidth - textSize.X);
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted(downloadText);
+
+            if (ImGui.IsWindowHovered() && ImGui.IsItemHovered())
+            {
+                var downloadToolTipText = string.Join(Environment.NewLine, currentDownloads.Select(c =>
+                    $"({_serverConfigManager.GetServerNameByIndex(c.ServerIndex)}) {c.Hash}: {UiSharedService.ByteToString(c.TransferredBytes)}/{UiSharedService.ByteToString(c.TotalBytes)}"));
+                UiSharedService.AttachToolTip(downloadToolTipText);
+            }
         }
         else
         {
