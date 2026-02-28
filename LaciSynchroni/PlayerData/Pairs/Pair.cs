@@ -67,82 +67,141 @@ public class Pair
 
     public void AddContextMenu(IMenuOpenedArgs args, IEnumerable<KeyValuePair<ServerBasedUserKey, Pair>> serverPairs)
     {
-        if (CachedPlayer == null ||
-            (args.Target is not MenuTargetDefault target) || 
-            target.TargetObjectId != CachedPlayer.PlayerCharacterId || 
-            IsPaused) return;
-
-        SeStringBuilder seStringBuilder = new();
-        SeStringBuilder seStringBuilder2 = new();
-        SeStringBuilder seStringBuilder3 = new();
-        SeStringBuilder seStringBuilder4 = new();
-        SeStringBuilder seStringBuilder5 = new();
-        var openProfileSeString = seStringBuilder.AddText("Open Profile").Build();
-        var reapplyDataSeString = seStringBuilder2.AddText("Reapply last data").Build();
-        var cyclePauseState = seStringBuilder3.AddText("Cycle pause state").Build();
-        var changePermissions = seStringBuilder4.AddText("Change Permissions").Build();
-        var pairIndividually = seStringBuilder5.AddText("Pair Individually").Build();
-        args.AddMenuItem(new MenuItem()
+        if (IsPaused)
         {
-            Name = openProfileSeString,
-            OnClicked = (a) =>
-            {
-                _mediator.Publish(new ProfileOpenStandaloneMessage(serverPairs.Select(p => p.Value)));
-            },
-            UseDefaultPrefix = true,
-            PrefixChar = 'L',
-            PrefixColor = 526
-        });
-
-        args.AddMenuItem(new MenuItem()
-        {
-            Name = changePermissions,
-            OnClicked = (a) =>
-            {
-                _mediator.Publish(new OpenPermissionWindowMessage(serverPairs.Select(p => p.Value)));
-            },
-            UseDefaultPrefix = false,
-            PrefixChar = 'L',
-            PrefixColor = 526
-        });
-
-        args.AddMenuItem(new MenuItem()
-        {
-            Name = reapplyDataSeString,
-            OnClicked = (a) => ApplyLastReceivedData(forced: true),
-            UseDefaultPrefix = false,
-            PrefixChar = 'L',
-            PrefixColor = 526
-        });
-
-        args.AddMenuItem(new MenuItem()
-        {
-            Name = cyclePauseState,
-            OnClicked = (a) =>
-            {
-                foreach (var item in serverPairs)
-                    _mediator.Publish(new CyclePauseMessage(item.Key.ServerIndex, item.Value.UserData));
-            },
-            UseDefaultPrefix = false,
-            PrefixChar = 'L',
-            PrefixColor = 526
-        });
-
-        // Only show the option to pair if we don't already have a pairing
-        if (IndividualPairStatus == IndividualPairStatus.None)
-        {
+            SeStringBuilder seStringBuilder = new();
+            var cyclePauseState = seStringBuilder.AddText("Unpause user").Build();
             args.AddMenuItem(new MenuItem()
             {
-                Name = pairIndividually,
+                Name = cyclePauseState,
                 OnClicked = (a) =>
                 {
                     foreach (var item in serverPairs)
-                        _mediator.Publish(new UserAddPairMessage(item.Key.ServerIndex, item.Value.UserData));
+                        _mediator.Publish(new UnPauseMessage(item.Key.ServerIndex, item.Value.UserData));
                 },
                 UseDefaultPrefix = false,
                 PrefixChar = 'L',
-                PrefixColor = 530
+                PrefixColor = 526
             });
+            return;
+        }
+        else if (CachedPlayer == null ||
+                (args.Target is not MenuTargetDefault target) ||
+                target.TargetObjectId != CachedPlayer.PlayerCharacterId)
+        {
+            return;
+        }
+        else
+        {
+            SeStringBuilder seStringBuilder = new();
+            SeStringBuilder seStringBuilder2 = new();
+            SeStringBuilder seStringBuilder3 = new();
+            SeStringBuilder seStringBuilder4 = new();
+            SeStringBuilder seStringBuilder5 = new();
+            SeStringBuilder seStringBuilder6 = new();
+            var openProfileSeString = seStringBuilder.AddText("Open Profile").Build();
+            var reapplyDataSeString = seStringBuilder2.AddText("Reapply last data").Build();
+            var cyclePauseState = seStringBuilder3.AddText("Cycle pause state").Build();
+            var changePermissions = seStringBuilder4.AddText("Change Permissions").Build();
+            var pairIndividually = seStringBuilder5.AddText("Pair Individually").Build();
+            var pauseUser = seStringBuilder6.AddText("Pause user").Build();
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = openProfileSeString,
+                OnClicked = (a) =>
+                {
+                    _mediator.Publish(new ProfileOpenStandaloneMessage(serverPairs.Select(p => p.Value)));
+                },
+                UseDefaultPrefix = true,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = changePermissions,
+                OnClicked = (a) =>
+                {
+                    _mediator.Publish(new OpenPermissionWindowMessage(serverPairs.Select(p => p.Value)));
+                },
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = reapplyDataSeString,
+                OnClicked = (a) => ApplyLastReceivedData(forced: true),
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = cyclePauseState,
+                OnClicked = (a) =>
+                {
+                    foreach (var item in serverPairs)
+                        _mediator.Publish(new CyclePauseMessage(item.Key.ServerIndex, item.Value.UserData));
+                },
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = pauseUser,
+                OnClicked = (a) =>
+                {
+                    foreach (var item in serverPairs)
+                        _mediator.Publish(new PauseMessage(item.Key.ServerIndex, item.Value.UserData));
+                },
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+
+            // Only show the option to pair if we don't already have a pairing
+            if (IndividualPairStatus == IndividualPairStatus.None)
+            {
+                args.AddMenuItem(new MenuItem()
+                {
+                    Name = pairIndividually,
+                    OnClicked = (a) =>
+                    {
+                        foreach (var item in serverPairs)
+                            _mediator.Publish(new UserAddPairMessage(item.Key.ServerIndex, item.Value.UserData));
+                    },
+                    UseDefaultPrefix = false,
+                    PrefixChar = 'L',
+                    PrefixColor = 530
+                });
+            }
+        }
+    }
+
+    public void AddContextMenuPaused(IMenuOpenedArgs args, IEnumerable<KeyValuePair<ServerBasedUserKey, Pair>> serverPairs)
+    {
+        if (IsPaused)
+        {
+            SeStringBuilder seStringBuilder = new();
+            var cyclePauseState = seStringBuilder.AddText("Unpause user").Build();
+            args.AddMenuItem(new MenuItem()
+            {
+                Name = cyclePauseState,
+                OnClicked = (a) =>
+                {
+                    foreach (var item in serverPairs)
+                        _mediator.Publish(new UnPauseMessage(item.Key.ServerIndex, item.Value.UserData));
+                },
+                UseDefaultPrefix = false,
+                PrefixChar = 'L',
+                PrefixColor = 526
+            });
+            return;
         }
     }
 

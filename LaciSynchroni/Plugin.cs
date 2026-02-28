@@ -154,7 +154,7 @@ public sealed class Plugin : IDalamudPlugin
             collection.AddSingleton((s) => new DtrEntry(s.GetRequiredService<ILogger<DtrEntry>>(), dtrBar, s.GetRequiredService<SyncConfigService>(),
                 s.GetRequiredService<SyncMediator>(), s.GetRequiredService<PairManager>(), s.GetRequiredService<ApiController>()));
             collection.AddSingleton(s => new PairManager(s.GetRequiredService<ILogger<PairManager>>(), s.GetRequiredService<PairFactory>(),
-                s.GetRequiredService<SyncConfigService>(), s.GetRequiredService<SyncMediator>(), contextMenu));
+                s.GetRequiredService<SyncConfigService>(), s.GetRequiredService<SyncMediator>(), s.GetRequiredService<DalamudUtilService>(), contextMenu));
             collection.AddSingleton<RedrawManager>();
             collection.AddSingleton((s) => new IpcCallerPenumbra(s.GetRequiredService<ILogger<IpcCallerPenumbra>>(), pluginInterface,
                 s.GetRequiredService<DalamudUtilService>(), s.GetRequiredService<SyncMediator>(), s.GetRequiredService<RedrawManager>()));

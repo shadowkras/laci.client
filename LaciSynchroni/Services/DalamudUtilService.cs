@@ -40,6 +40,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     private readonly IGameConfig _gameConfig;
     private readonly BlockedCharacterHandler _blockedCharacterHandler;
     private readonly IFramework _framework;
+    private readonly ITargetManager _targetManager;
     private readonly IGameGui _gameGui;
     private readonly ILogger<DalamudUtilService> _logger;
     private readonly IObjectTable _objectTable;
@@ -65,6 +66,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
         _clientState = clientState;
         _objectTable = objectTable;
         _framework = framework;
+        _targetManager = targetManager;
         _gameGui = gameGui;
         _condition = condition;
         _gameData = gameData;
@@ -158,6 +160,15 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     {
         get => TargetSystem.Instance()->GPoseTarget;
         set => TargetSystem.Instance()->GPoseTarget = value;
+    }
+
+    public string TargetName
+    {
+        get => _targetManager.Target?.Name.TextValue ?? "";
+    }
+    public unsafe nint TargetAddress
+    {
+        get => _targetManager.Target?.Address ?? nint.Zero;
     }
 
     private unsafe bool HasGposeTarget => GposeTarget != null;
@@ -325,7 +336,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
         return await RunOnFrameworkThread(() => _cid.Value.ToString().GetHash256()).ConfigureAwait(false);
     }
 
-    private unsafe static string GetHashedCIDFromPlayerPointer(nint ptr)
+    public unsafe static string GetHashedCIDFromPlayerPointer(nint ptr)
     {
         return ((BattleChara*)ptr)->Character.ContentId.ToString().GetHash256();
     }

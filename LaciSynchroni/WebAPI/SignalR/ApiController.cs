@@ -1,6 +1,7 @@
 ﻿using Dalamud.Interface.Colors;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Dto;
+using LaciSynchroni.Common.Dto.User;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Events;
@@ -65,6 +66,30 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
         // - the plugin framework updates the first time and the user is logged in
         // - the user manually logged in
         Mediator.Subscribe<DalamudLoginMessage>(this, (_) => AutoConnectClients());
+
+        //  This is for when a user accepts a pairing request. We want to immediately try to pair with the content ID, so we can show the paired user in the UI as soon as possible.
+        Mediator.Subscribe<SendPairRequestMessage>(this, (msg) =>
+        {
+            foreach(var serverIndex in ConnectedServerIndexes)
+            {
+                var sendPairNotification = _serverConfigManager.GetServerByIndex(serverIndex)?.ShowPairingRequestNotification ?? false;
+                if (sendPairNotification)
+                {
+                    _ = GetClientForServer(serverIndex)?.UserMakePairRequest(new UserPairRequestDto(msg.TargetIdent, msg.UserData));
+
+                    if (!string.IsNullOrEmpty(msg.UserData?.UID))
+                        _ = GetClientForServer(serverIndex)?.TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
+                }
+            }
+        });
+
+        Mediator.Subscribe<SendPairRejectionMessage>(this, (msg) =>
+        {
+            foreach (var serverIndex in ConnectedServerIndexes)
+            {
+                _ = GetClientForServer(serverIndex)?.UserRejectPairRequest(new UserPairRequestDto(msg.TargetIdent, msg.UserData));
+            }
+        });
     }
 
     public string GetServerErrorByServer(int serverId)

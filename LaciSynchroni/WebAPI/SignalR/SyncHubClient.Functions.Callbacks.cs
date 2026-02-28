@@ -112,6 +112,12 @@ public partial class SyncHubClient
         return Task.CompletedTask;
     }
 
+    public Task Client_UpdatePairRequests(UserPairRequestsDto dto)
+    {
+        ExecuteSafely(() => Mediator.Publish(new PairRequestsUpdate(dto)));
+        return Task.CompletedTask;
+    }
+
     public Task Client_ReceivePairingMessage(UserDto dto)
     {
         Logger.LogDebug("Got a request to pair from {Uid}", dto.User.UID);
@@ -343,9 +349,14 @@ public partial class SyncHubClient
         _connection!.On(nameof(Client_ReceiveServerMessage), act);
     }
 
+    public void OnUpdatePairRequests(Action<UserPairRequestsDto> act)
+    {
+        if (_initialized) return;
+        _connection!.On(nameof(Client_UpdatePairRequests), act);
+    }
+
     public void OnReceivePairingMessage(Action<UserDto> act)
     {
-        Logger.LogDebug("ReceievedPairingMessage");
         if (_initialized) return;
         _connection!.On(nameof(Client_ReceivePairingMessage), act);
     }

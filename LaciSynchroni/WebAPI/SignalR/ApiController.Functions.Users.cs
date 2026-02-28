@@ -2,6 +2,7 @@
 using LaciSynchroni.Common.Dto;
 using LaciSynchroni.Common.Dto.User;
 using LaciSynchroni.Services.ServerConfiguration;
+using Microsoft.Extensions.Logging;
 
 namespace LaciSynchroni.WebAPI;
 using ServerIndex = int;
@@ -59,6 +60,21 @@ public partial class ApiController
     public async Task UserUpdateDefaultPermissions(ServerIndex serverIndex, DefaultPermissionsDto defaultPermissionsDto)
     {
         await GetClientForServer(serverIndex)!.UserUpdateDefaultPermissions(defaultPermissionsDto).ConfigureAwait(false);
+    }
+
+    public async Task UserMakePairRequest(ServerIndex serverIndex, UserPairRequestDto request)
+    {
+        await UserMakePairRequestInternal(serverIndex, request).ConfigureAwait(false);
+    }
+
+    private async Task UserMakePairRequestInternal(ServerIndex serverIndex, UserPairRequestDto request)
+    {
+        await GetClientForServer(serverIndex)!.UserMakePairRequest(request).ConfigureAwait(false);
+    }
+
+    public async Task UserRejectPairRequest(ServerIndex serverIndex, UserPairRequestDto request)
+    {
+        await GetClientForServer(serverIndex)!.UserRejectPairRequest(request).ConfigureAwait(false);
     }
 }
 #pragma warning restore MA0040

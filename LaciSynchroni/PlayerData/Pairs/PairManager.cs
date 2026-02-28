@@ -1,4 +1,5 @@
 ﻿using Dalamud.Game.Gui.ContextMenu;
+using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Common.Lua;
 using LaciSynchroni.Common.Data;
@@ -8,12 +9,14 @@ using LaciSynchroni.Common.Data.Extensions;
 using LaciSynchroni.Common.Dto.Group;
 using LaciSynchroni.Common.Dto.User;
 using LaciSynchroni.PlayerData.Factories;
+using LaciSynchroni.Services;
 using LaciSynchroni.Services.Events;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
 using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.Utils;
+using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -29,6 +32,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
 
     private readonly SyncConfigService _configurationService;
     private readonly IContextMenu _dalamudContextMenu;
+    private readonly DalamudUtilService _dalamudUtilService;
     private readonly PairFactory _pairFactory;
     private Lazy<List<Pair>> _pairRequestsInternal;
     private Lazy<List<Pair>> _directPairsInternal;
@@ -36,12 +40,13 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     private Lazy<Dictionary<Pair, List<GroupFullInfoDto>>> _pairsWithGroupsInternal;
 
     public PairManager(ILogger<PairManager> logger, PairFactory pairFactory,
-        SyncConfigService configurationService, SyncMediator mediator,
+        SyncConfigService configurationService, SyncMediator mediator, DalamudUtilService dalamudUtilService,
         IContextMenu dalamudContextMenu) : base(logger, mediator)
     {
         _pairFactory = pairFactory;
         _configurationService = configurationService;
         _dalamudContextMenu = dalamudContextMenu;
+        _dalamudUtilService = dalamudUtilService;
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) => ClearPairs(msg.ServerIndex));
         Mediator.Subscribe<CutsceneEndMessage>(this, (_) => ReapplyPairData());
         _directPairsInternal = DirectPairsLazy();
@@ -174,6 +179,8 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         var key = BuildKey(dto, serverIndex);
         if (!_allClientPairs.TryGetValue(key, out var pair) || !pair.HasAnyConnection())
         {
+            Mediator.Publish(new SendPairRejectionMessage(UserData: dto));
+
             //User is not directly paired and doesnt share any syncshell, removing
             RemoveUserPair(new UserDto(dto), serverIndex);
         }
@@ -199,6 +206,11 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             .ForEach(key => _allGroups.Remove(key, out _));
         RecreateLazy();
     }
+
+    public List<Pair> GetAllUserPairs(int serverIndex) => _allClientPairs
+        .Where(p => p.Key.ServerIndex == serverIndex)
+        .Select(p => p.Value)
+        .ToList();
 
     public List<Pair> GetOnlineUserPairs(int serverIndex) => _allClientPairs
         .Where(p => p.Key.ServerIndex == serverIndex)
@@ -511,11 +523,41 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         if (!_configurationService.Current.EnableRightClickMenus) return;
         var targetNameProperty = args.Target.GetType().GetProperties().FirstOrDefault(p => string.Equals(p.Name, "TargetName", StringComparison.CurrentCultureIgnoreCase));
         var targetName = targetNameProperty?.GetValue(args.Target)?.ToString() ?? string.Empty;
-        var uniquePlayerPairs = _allClientPairs.Where(p=> p.Value.IsVisible && string.Equals(p.Value.PlayerName, targetName, StringComparison.CurrentCultureIgnoreCase))
+        var uniquePlayerPairs = _allClientPairs.Where(p=> p.Value.IsVisible && string.Equals(p.Value.PlayerIdentification, targetName, StringComparison.CurrentCultureIgnoreCase))
             .Distinct();
 
-        if(uniquePlayerPairs?.Any() ?? false)
+        var allDistinctPairs = _allClientPairs.Where(p =>p.Value.PlayerIdentification?.Contains(targetName, StringComparison.CurrentCultureIgnoreCase) ?? false)
+            .Distinct();
+
+        if (uniquePlayerPairs?.Any() ?? false)
+        {           
             uniquePlayerPairs.FirstOrDefault().Value.AddContextMenu(args, uniquePlayerPairs);
+        }
+        else if(allDistinctPairs?.Any() ?? false)
+        {
+            allDistinctPairs.FirstOrDefault().Value.AddContextMenuPaused(args, allDistinctPairs);
+        }
+        else
+        {
+
+            //Player is not paired, but we can still add the option to send a pair request if we can find a matching player through the target address
+            var target = _dalamudUtilService.TargetAddress;
+            // don't add menu to self
+            if (_dalamudUtilService.GetPlayerPtr() == target) return;
+
+            var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
+            if (targetIdent == null) return;
+
+            try
+            {
+                AddContextMenuUnpaired(args, targetIdent);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Something went wrong adding context menu.");
+            }
+        }
+
     }
 
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)
@@ -556,6 +598,26 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
                 redrawPair.ApplyLastReceivedData(forced: true);
             });
         }
+    }
+
+    public void AddContextMenuUnpaired(IMenuOpenedArgs args, string targetIdent)
+    {
+        SeStringBuilder seStringBuilder = new();
+        var pairIndividually = seStringBuilder.AddText("Send Pair Request").Build();
+
+        args.AddMenuItem(new MenuItem()
+        {
+            Name = pairIndividually,
+            OnClicked = (a) => _ = SendPairRequestInternal(targetIdent),
+            UseDefaultPrefix = false,
+            PrefixChar = 'P',
+            PrefixColor = 530
+        });
+    }
+
+    private async Task SendPairRequestInternal(string? targetIdent = null, UserData? userData = null)
+    {
+        Mediator.Publish(new SendPairRequestMessage(targetIdent, userData));
     }
 
     private Lazy<Dictionary<GroupFullInfoWithServer, List<Pair>>> GroupPairsLazy()

@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
 using System.Net;
 
 namespace LaciSynchroni.WebAPI;
@@ -105,6 +106,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             if (serverIndex == msg.ServerIndex)
                 _ = PauseAsync(msg.ServerIndex, msg.UserData);
         });
+        Mediator.Subscribe<UnPauseMessage>(this, (msg) =>
+        {
+            if (serverIndex == msg.ServerIndex)
+                _ = UnPauseAsync(msg.ServerIndex, msg.UserData);
+        });
         Mediator.Subscribe<UserAddPairMessage>(this, (msg) =>
         {
             if (serverIndex == msg.ServerIndex)
@@ -116,6 +122,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                     _ = TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
             }
         });
+        Mediator.Subscribe<PairRequestsUpdate>(this, (msg) => UpdatePairRequests(msg.Dto));
     }
 
     public async Task CreateConnectionsAsync()
@@ -545,6 +552,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         OnDownloadReady((guid) => _ = Client_DownloadReady(guid));
         OnReceiveServerMessage((sev, msg) => _ = Client_ReceiveServerMessage(sev, msg));
         OnReceivePairingMessage((dto) => _ = Client_ReceivePairingMessage(dto));
+        OnUpdatePairRequests(dto => _ = Client_UpdatePairRequests(dto));
         OnReceiveBroadcastPairRequest((dto) => _ = Client_ReceiveBroadcastPairRequest(dto));
         OnUpdateSystemInfo((dto) => _ = Client_UpdateSystemInfo(dto));
 
@@ -855,5 +863,45 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var perm = pair.UserPair!.OwnPermissions;
         perm.SetPaused(paused: true);
         await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+    }
+
+    private async Task UnPauseAsync(int serverIndex, UserData userData)
+    {
+        if (serverIndex != ServerIndex)
+        {
+            return;
+        }
+        var pair = _pairManager.GetAllUserPairs(ServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
+        var perm = pair.UserPair!.OwnPermissions;
+        perm.SetPaused(paused: false);
+        await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
+    }
+
+    private void UpdatePairRequests(UserPairRequestsDto pairRequest)
+    {
+        if (ServerToUse.ShowPairingRequestNotification)
+        {
+            foreach (var req in pairRequest.PairingRequests)
+            {
+                var name = "";
+                name = _dalamudUtil.FindPlayerByNameHash(req.RequestorIdent).Name;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    var pair = _pairManager.GetPairByUID(ServerIndex, req.Requestor.UID);
+                    if (pair != null)
+                    {
+                        name = pair.PlayerName;
+
+                        var userData = new UserDto(new UserData(req.Requestor.UID, name));
+                        _ = Client_ReceivePairingMessage(userData);
+                    }
+                    else
+                    {
+                        var userData = new UserDto(new UserData(req.Requestor.UID, name));
+                        _ = Client_ReceivePairingMessage(userData);
+                    }
+                }
+            }
+        }
     }
 }

@@ -130,6 +130,18 @@ public partial class SyncHubClient
         await _connection!.InvokeAsync(nameof(UserUpdateDefaultPermissions), defaultPermissionsDto).ConfigureAwait(false);
     }
 
+    public async Task UserMakePairRequest(UserPairRequestDto userPairRequest)
+    {
+        if (!IsConnected) return;
+        await _connection!.InvokeAsync(nameof(UserMakePairRequest), userPairRequest).ConfigureAwait(false);
+    }
+
+    public async Task UserRejectPairRequest(UserPairRequestDto userPairRequest)
+    {
+        if (!IsConnected) return;
+        await _connection!.InvokeAsync(nameof(UserRejectPairRequest), userPairRequest).ConfigureAwait(false);
+    }
+
     private async Task PushCharacterDataInternal(CharacterData character, List<UserData> visibleCharacters)
     {
         Logger.LogInformation("[{Hash}] Pushing character data to {Charas}", character.DataHash.Value, string.Join(", ", visibleCharacters.Select(c => c.AliasOrUID)));
