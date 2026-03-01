@@ -539,13 +539,14 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         }
         else
         {
-
             //Player is not paired, but we can still add the option to send a pair request if we can find a matching player through the target address
             var target = _dalamudUtilService.TargetAddress;
             // don't add menu to self
             if (_dalamudUtilService.GetPlayerPtr() == target) return;
+            // or if the target is not a player at all (e.g. NPC, monster, etc.)
+            else if (args.Target is not MenuTargetDefault) return;
 
-            var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
+                var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
             if (targetIdent == null) return;
 
             try
