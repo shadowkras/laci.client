@@ -120,31 +120,7 @@ public partial class SyncHubClient
 
     public Task Client_ReceivePairingMessage(UserDto dto)
     {
-        Logger.LogDebug("Got a request to pair from {Uid}", dto.User.UID);
-        var pair = _pairManager.GetPairByUID(ServerIndex, dto.User.UID);
-        if (pair == null)
-        {
-            Logger.LogInformation("Got a request to pair on {ServerName} from {Uid}.", ServerName, dto.User.UID);
-
-            if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
-            {
-                _pairManager.AddUserPairRequest(ServerIndex, dto.User);
-                Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
-                    $"({ServerName}) Someone would like to pair. Their UID is {dto.User.AliasOrUID}.", NotificationType.Info, TimeSpan.FromSeconds(15)));
-            }
-        }
-        else
-        {
-            var player = string.IsNullOrEmpty(pair.PlayerName) ? dto.User.AliasOrUID : pair.PlayerName;
-            Logger.LogInformation("Got a request to pair on {ServerName} from {Uid} mapping to {Player}.", ServerName, dto.User.UID, player);
-
-            if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
-            {
-                _pairManager.AddUserPairRequest(ServerIndex, dto.User);
-                Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
-                    $"({ServerName}) Player {player} would like to pair. Their UID is {dto.User.AliasOrUID}.", NotificationType.Info, TimeSpan.FromSeconds(15)));
-            }
-        }
+        ReceivedPairingRequest(dto);
         return Task.CompletedTask;
     }
 

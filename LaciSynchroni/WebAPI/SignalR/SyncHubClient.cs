@@ -118,7 +118,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 var sendPairNotification = _serverConfigurationManager.GetServerByIndex(ServerIndex)?.ShowPairingRequestNotification ?? false;
                 _ = UserAddPair(new UserDto(msg.UserData), sendPairNotification);
 
-                if(sendPairNotification)
+                if (sendPairNotification)
                     _ = TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
             }
         });
@@ -156,7 +156,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        if(IsConnected)
+        if (IsConnected)
         {
             // Just make sure no open connection exists. It shouldn't, but can't hurt (At least I assume that was the intent...)
             // Also set to "Connecting" at this point
@@ -233,7 +233,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "Exception on connection to {ServerName} ({ServerHubUri})", ServerName, ServerToUse.ServerHubUri);
-                backoffSeconds = await HandleReconnectDelay(LogLevel.Critical, ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);                
+                backoffSeconds = await HandleReconnectDelay(LogLevel.Critical, ex.Message, backoffSeconds, connectionCancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -312,7 +312,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         if (!await VerifyClientVersion(ConnectionDto).ConfigureAwait(false))
         {
             await StopConnectionAsync(ServerState.VersionMisMatch).ConfigureAwait(false);
-           Logger.LogWarning("Client version mismatch with service {ServerName}: {ServerVersion}", ServerName, ConnectionDto.ServerVersion);
+            Logger.LogWarning("Client version mismatch with service {ServerName}: {ServerVersion}", ServerName, ConnectionDto.ServerVersion);
         }
         // Also trigger some warnings
         TriggerConnectionWarnings(ConnectionDto);
@@ -357,7 +357,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 return hubToCheck;
             }
 
-            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}: ({StatusCode}) {StatusCodeText}", 
+            Logger.LogWarning("{HubUri}: Not valid, attempting next hub address for {ServerName}: ({StatusCode}) {StatusCodeText}",
                 hubToCheck, ServerName, responseHub.StatusCode, responseHub.StatusCode.ToString());
         }
 
@@ -401,7 +401,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 $"Stopping existing connection to {ServerName}")));
             _initialized = false;
 
-            if(!_healthCheckTokenSource?.IsCancellationRequested ?? false)
+            if (!_healthCheckTokenSource?.IsCancellationRequested ?? false)
                 _healthCheckTokenSource?.CancelAsync();
 
             Mediator.Publish(new DisconnectedMessage(ServerIndex));
@@ -615,7 +615,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             {
                 Logger.LogError(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
                 _healthCheckFailures++;
-                if(_healthCheckFailures > 10)
+                if (_healthCheckFailures > 10)
                 {
                     Logger.LogError("Too many health check failures to {ServerName}, reconnecting", ServerName);
                     _doNotNotifyOnNextInfo = true;
@@ -635,7 +635,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             _healthCheckTokenSource?.Dispose();
             _healthCheckTokenSource = cts;
         }
-        catch (OperationCanceledException) 
+        catch (OperationCanceledException)
         {
             //Ignore silently, we just wanted to cancel the old one
         }
@@ -686,7 +686,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var groupsTask = GroupsGetAll();
         var userPairsTask = UserGetPairedClients();
         await Task.WhenAll(groupsTask, userPairsTask).ConfigureAwait(false);
-        
+
         foreach (var entry in groupsTask.Result)
         {
             Logger.LogDebug("Group: {Entry}", entry);
@@ -727,10 +727,17 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         var (name, address) = _dalamudUtil.FindPlayerByNameHash(hashedCid);
         if (!string.IsNullOrWhiteSpace(name))
         {
-            var worldName = _dalamudUtil.GetWorldNameFromPlayerAddress(address);
-            return !string.IsNullOrWhiteSpace(worldName)
-                ? $"{name} @ {worldName}"
-                : name;
+            try
+            {
+                var worldName = _dalamudUtil.GetWorldNameFromPlayerAddress(address);
+                return !string.IsNullOrWhiteSpace(worldName)
+                    ? $"{name} @ {worldName}"
+                    : name;
+            }
+            catch
+            {
+                return name; // If we fail to get the world name, just return the player name without it
+            }
         }
 
         var pair = _pairManager
@@ -881,26 +888,59 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         if (ServerToUse.ShowPairingRequestNotification)
         {
+            Logger.LogInformation("Received updated pair requests from {ServerName}, total requests: {RequestCount}", ServerName, pairRequest.PairingRequests.Count);
+
             foreach (var req in pairRequest.PairingRequests)
             {
-                var name = "";
-                name = _dalamudUtil.FindPlayerByNameHash(req.RequestorIdent).Name;
-                if (string.IsNullOrWhiteSpace(name))
+                var name = GetDisplayNameByContentId(req.RequestorIdent) ?? string.Empty;
+
+                Logger.LogInformation(!string.IsNullOrWhiteSpace(name)
+                    ? $"Pairing request from {name}"
+                    : $"Pairing request from {req.RequestorIdent}");
+
+                if (!string.IsNullOrWhiteSpace(name))
                 {
                     var pair = _pairManager.GetPairByUID(ServerIndex, req.Requestor.UID);
                     if (pair != null)
                     {
                         name = pair.PlayerName;
-
-                        var userData = new UserDto(new UserData(req.Requestor.UID, name));
-                        _ = Client_ReceivePairingMessage(userData);
-                    }
-                    else
-                    {
-                        var userData = new UserDto(new UserData(req.Requestor.UID, name));
-                        _ = Client_ReceivePairingMessage(userData);
                     }
                 }
+
+                var userData = new UserDto(new UserData(req.Requestor.UID, req.Requestor.Alias));
+                ReceivedPairingRequest(userData, name);
+            }
+        }
+    }
+
+    private void ReceivedPairingRequest(UserDto dto, string? characterName = "")
+    {
+        Logger.LogDebug("Got a request to pair from {Uid}", dto.User.UID);
+        var pair = _pairManager.GetPairByUID(ServerIndex, dto.User.UID);
+        if (pair == null)
+        {
+            Logger.LogInformation("Got a request to pair on {ServerName} from {Uid}.", ServerName, dto.User.UID);
+
+            if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
+            {
+                if (string.IsNullOrEmpty(characterName) && !string.IsNullOrEmpty(dto.User.AliasOrUID))
+                    characterName = "Someone";
+
+                _pairManager.AddUserPairRequest(ServerIndex, dto.User);
+                Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
+                    $"({ServerName}) {characterName} would like to pair. Their UID is {dto.User.AliasOrUID}.", NotificationType.Info, TimeSpan.FromSeconds(15)));
+            }
+        }
+        else
+        {
+            var player = string.IsNullOrEmpty(pair.PlayerName) ? dto.User.AliasOrUID : pair.PlayerName;
+            Logger.LogInformation("Got a request to pair on {ServerName} from {Uid} mapping to {Player}.", ServerName, dto.User.UID, player);
+
+            if (_serverConfigurationManager.GetServerByIndex(ServerIndex).ShowPairingRequestNotification)
+            {
+                _pairManager.AddUserPairRequest(ServerIndex, dto.User);
+                Mediator.Publish(new NotificationMessage("Incoming direct pair request.",
+                    $"({ServerName}) Player {player} would like to pair. Their UID is {dto.User.AliasOrUID}.", NotificationType.Info, TimeSpan.FromSeconds(15)));
             }
         }
     }

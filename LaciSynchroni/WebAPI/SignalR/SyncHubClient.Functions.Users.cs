@@ -133,6 +133,7 @@ public partial class SyncHubClient
     public async Task UserMakePairRequest(UserPairRequestDto userPairRequest)
     {
         if (!IsConnected) return;
+        Logger.LogInformation("Sending pair request to {Target} with data: {Data}", userPairRequest.RequestTargetIdent, userPairRequest.UserData);
         await _connection!.InvokeAsync(nameof(UserMakePairRequest), userPairRequest).ConfigureAwait(false);
     }
 

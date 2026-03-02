@@ -245,7 +245,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         else
         {
             return visibleUserPairs
-                .DistinctBy(p=> p.PlayerName)
+                .DistinctBy(p => p.PlayerName)
                 .Select(x => string.Format("{0}", preferNotes ? x.Note ?? x.PlayerName : x.PlayerName));
         }
     }
@@ -255,7 +255,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         .Count(p => p.Value.IsVisible);
 
     public int GetVisibleUserCount(int serverIndex) => _allClientPairs
-        .Where(p=> p.Key.ServerIndex == serverIndex)
+        .Where(p => p.Key.ServerIndex == serverIndex)
         .DistinctBy(p => p.Value.PlayerName)
         .Count(p => p.Value.IsVisible);
 
@@ -517,23 +517,23 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         DisposePairs(null);
     }
 
-    private void DalamudContextMenuOnOnOpenGameObjectContextMenu(IMenuOpenedArgs args)
+    private unsafe void DalamudContextMenuOnOnOpenGameObjectContextMenu(IMenuOpenedArgs args)
     {
         if (args.MenuType == ContextMenuType.Inventory) return;
         if (!_configurationService.Current.EnableRightClickMenus) return;
         var targetNameProperty = args.Target.GetType().GetProperties().FirstOrDefault(p => string.Equals(p.Name, "TargetName", StringComparison.CurrentCultureIgnoreCase));
         var targetName = targetNameProperty?.GetValue(args.Target)?.ToString() ?? string.Empty;
-        var uniquePlayerPairs = _allClientPairs.Where(p=> p.Value.IsVisible && string.Equals(p.Value.PlayerIdentification, targetName, StringComparison.CurrentCultureIgnoreCase))
+        var uniquePlayerPairs = _allClientPairs.Where(p => p.Value.IsVisible && string.Equals(p.Value.PlayerIdentification, targetName, StringComparison.CurrentCultureIgnoreCase))
             .Distinct();
 
-        var allDistinctPairs = _allClientPairs.Where(p =>p.Value.PlayerIdentification?.Contains(targetName, StringComparison.CurrentCultureIgnoreCase) ?? false)
+        var allDistinctPairs = _allClientPairs.Where(p => p.Value.PlayerIdentification?.Contains(targetName, StringComparison.CurrentCultureIgnoreCase) ?? false)
             .Distinct();
 
         if (uniquePlayerPairs?.Any() ?? false)
-        {           
+        {
             uniquePlayerPairs.FirstOrDefault().Value.AddContextMenu(args, uniquePlayerPairs);
         }
-        else if(allDistinctPairs?.Any() ?? false)
+        else if (allDistinctPairs?.Any() ?? false)
         {
             allDistinctPairs.FirstOrDefault().Value.AddContextMenuPaused(args, allDistinctPairs);
         }
@@ -544,9 +544,11 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             // don't add menu to self
             if (_dalamudUtilService.GetPlayerPtr() == target) return;
             // or if the target is not a player at all (e.g. NPC, monster, etc.)
-            else if (args.Target is not MenuTargetDefault) return;
+            var playerCharacter = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target;
+            var isPlayerCharacter = playerCharacter->GetObjectKind() == FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc;
+            if (!isPlayerCharacter) return;
 
-                var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
+            var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
             if (targetIdent == null) return;
 
             try
@@ -558,7 +560,6 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
                 Logger.LogDebug(ex, "Something went wrong adding context menu.");
             }
         }
-
     }
 
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)
@@ -609,14 +610,14 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         args.AddMenuItem(new MenuItem()
         {
             Name = pairIndividually,
-            OnClicked = (a) => _ = SendPairRequestInternal(targetIdent),
+            OnClicked = (a) => SendPairRequestInternal(targetIdent),
             UseDefaultPrefix = false,
             PrefixChar = 'P',
             PrefixColor = 530
         });
     }
 
-    private async Task SendPairRequestInternal(string? targetIdent = null, UserData? userData = null)
+    private void SendPairRequestInternal(string? targetIdent = null, UserData? userData = null)
     {
         Mediator.Publish(new SendPairRequestMessage(targetIdent, userData));
     }
