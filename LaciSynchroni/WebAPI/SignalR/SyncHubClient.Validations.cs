@@ -115,7 +115,8 @@ public partial class SyncHubClient
     {
         var currentClientVer = Assembly.GetExecutingAssembly().GetName().Version!;
 
-        if (connectionDto.CurrentClientVersion > currentClientVer)
+        if (connectionDto.CurrentClientVersion > currentClientVer &&
+            !ServerToUse.BypassVersionCheck)
         {
             var pluginVersion = string.Create(CultureInfo.InvariantCulture, $"{currentClientVer.Major}.{currentClientVer.Minor}.{currentClientVer.Build}.{currentClientVer.Revision}");
             var currentClientVersion = string.Create(CultureInfo.InvariantCulture, $"{connectionDto.CurrentClientVersion.Major}.{connectionDto.CurrentClientVersion.Minor}.{connectionDto.CurrentClientVersion.Build}.{connectionDto.CurrentClientVersion.Revision}");
