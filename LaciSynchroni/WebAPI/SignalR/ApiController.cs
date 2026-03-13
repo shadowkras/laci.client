@@ -77,8 +77,8 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
                 {
                     _ = GetClientForServer(serverIndex)?.UserMakePairRequest(new UserPairRequestDto(msg.TargetIdent, msg.UserData));
 
-                    if (!string.IsNullOrEmpty(msg.UserData?.UID))
-                        _ = GetClientForServer(serverIndex)?.TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
+                    if (!string.IsNullOrEmpty(msg.TargetIdent))
+                        _ = GetClientForServer(serverIndex)?.TryPairWithContentId(msg.TargetIdent); //Pair request confirmation compatibility.
                 }
             }
         });
