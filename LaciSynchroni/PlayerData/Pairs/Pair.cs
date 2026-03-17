@@ -67,7 +67,13 @@ public class Pair
 
     public void AddContextMenu(IMenuOpenedArgs args, IEnumerable<KeyValuePair<ServerBasedUserKey, Pair>> serverPairs)
     {
-        if (IsPaused)
+        if (args.MenuType == ContextMenuType.Inventory ||
+            (args.Target is not MenuTargetDefault target) ||
+            target.TargetObjectId != CachedPlayer?.PlayerCharacterId)
+        {
+            return;
+        }
+        else if (IsPaused && IsVisible)
         {
             SeStringBuilder seStringBuilder = new();
             var cyclePauseState = seStringBuilder.AddText("Unpause user").Build();
@@ -85,13 +91,7 @@ public class Pair
             });
             return;
         }
-        else if (CachedPlayer == null ||
-                (args.Target is not MenuTargetDefault target) ||
-                target.TargetObjectId != CachedPlayer.PlayerCharacterId)
-        {
-            return;
-        }
-        else
+        else if(CachedPlayer is not null && IsVisible)
         {
             SeStringBuilder seStringBuilder = new();
             SeStringBuilder seStringBuilder2 = new();
