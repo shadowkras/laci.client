@@ -521,6 +521,15 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     {
         if (args.MenuType == ContextMenuType.Inventory) return;
         if (!_configurationService.Current.EnableRightClickMenus) return;
+        if (args.Target is not MenuTargetDefault) return;
+        if (args.AddonName != null) return;
+        var target = _dalamudUtilService.TargetAddress;
+        if (target == nint.Zero) return;
+        if (_dalamudUtilService.GetPlayerPtr() == target) return;// don't add menu to self
+        var playerCharacter = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target;
+        var isPlayerCharacter = playerCharacter->GetObjectKind() == FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc;
+        if (!isPlayerCharacter) return;// or if the target is not a player at all (e.g. NPC, monster, etc.)
+
         var targetNameProperty = args.Target.GetType().GetProperties().FirstOrDefault(p => string.Equals(p.Name, "TargetName", StringComparison.CurrentCultureIgnoreCase));
         var targetName = targetNameProperty?.GetValue(args.Target)?.ToString() ?? string.Empty;
         var uniquePlayerPairs = _allClientPairs.Where(p => p.Value.IsVisible && string.Equals(p.Value.PlayerIdentification, targetName, StringComparison.CurrentCultureIgnoreCase))
@@ -540,14 +549,6 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         else
         {
             //Player is not paired, but we can still add the option to send a pair request if we can find a matching player through the target address
-            var target = _dalamudUtilService.TargetAddress;
-            // don't add menu to self
-            if (_dalamudUtilService.GetPlayerPtr() == target) return;
-            // or if the target is not a player at all (e.g. NPC, monster, etc.)
-            var playerCharacter = (FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject*)target;
-            var isPlayerCharacter = playerCharacter->GetObjectKind() == FFXIVClientStructs.FFXIV.Client.Game.Object.ObjectKind.Pc;
-            if (!isPlayerCharacter) return;
-
             var targetIdent = DalamudUtilService.GetHashedCIDFromPlayerPointer(target);
             if (targetIdent == null) return;
 
