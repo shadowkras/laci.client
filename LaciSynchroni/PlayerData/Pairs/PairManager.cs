@@ -147,7 +147,8 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         if (!_allClientPairs.ContainsKey(key))
         {
             var pairInfo = new UserFullPairDto(dto,
-                IndividualPairStatus.PairRequested, new List<string>(), UserPermissions.NoneSet, UserPermissions.NoneSet);
+                IndividualPairStatus.PairRequested, new List<string>(), UserPermissions.Paused, UserPermissions.Paused);
+
             _allClientPairs[key] = _pairFactory.Create(pairInfo, serverIndex);
         }
         else
@@ -167,6 +168,11 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             Mediator.Publish(new UserAddPairMessage(serverIndex, dto));
 
             _allClientPairs[key].UserPair.IndividualPairStatus = IndividualPairStatus.Bidirectional;
+
+            var perm = _allClientPairs[key].UserPair!.OwnPermissions;
+            if(perm.IsPaused())
+                perm.SetPaused(paused: false);
+
             LastAddedUser = _allClientPairs[key];
             _allClientPairs[key].ApplyLastReceivedData();
 
