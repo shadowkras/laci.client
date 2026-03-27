@@ -119,7 +119,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 _ = UserAddPair(new UserDto(msg.UserData), sendPairNotification);
 
                 if (sendPairNotification)
-                    _ = TryPairWithContentId(msg.UserData.UID); //Pair request confirmation compatibility.
+                    _ = TryPairWithContentId(msg.UserData.UID); //Lightless Pair request confirmation compatibility. UID is the TargetIdent here.
             }
         });
         Mediator.Subscribe<PairRequestsUpdate>(this, (msg) => UpdatePairRequests(msg.Dto));

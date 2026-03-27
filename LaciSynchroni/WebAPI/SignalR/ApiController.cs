@@ -73,12 +73,13 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
             foreach(var serverIndex in ConnectedServerIndexes)
             {
                 var sendPairNotification = _serverConfigManager.GetServerByIndex(serverIndex)?.ShowPairingRequestNotification ?? false;
-                if (sendPairNotification)
+                if (sendPairNotification && !string.IsNullOrEmpty(msg.TargetIdent))
                 {
+                    //Psync Pair request compatibility
                     _ = GetClientForServer(serverIndex)?.UserMakePairRequest(new UserPairRequestDto(msg.TargetIdent, msg.UserData));
 
-                    if (!string.IsNullOrEmpty(msg.TargetIdent))
-                        _ = GetClientForServer(serverIndex)?.TryPairWithContentId(msg.TargetIdent); //Pair request confirmation compatibility.
+                    //Lightless Pair request confirmation compatibility.
+                    _ = GetClientForServer(serverIndex)?.TryPairWithContentId(msg.TargetIdent); 
                 }
             }
         });

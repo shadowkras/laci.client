@@ -40,11 +40,18 @@ public partial class SyncHubClient
 
         if (pairingNotice == true)
         {
-            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Pair notification compatibility.            
+            await _connection!.SendAsync(nameof(UserAddPair), user, pairingNotice).ConfigureAwait(false); // Psync Pair notification compatibility.
         }
         else
         {
-            await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+            try
+            {
+                await _connection!.SendAsync(nameof(UserAddPair), user).ConfigureAwait(false);
+            }
+            catch
+            {
+                await _connection!.SendAsync(nameof(UserAddPair), user, false).ConfigureAwait(false); // Psync Pair notification compatibility.
+            }
         }
     }
 
