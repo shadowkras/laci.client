@@ -140,6 +140,28 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
     public Dictionary<ushort, string> WorldData => _dalamudUtil.WorldData.Value;
     public uint WorldId => _dalamudUtil.GetHomeWorldId();
 
+    public static string ApproxElapsedTimeToString(TimeSpan elapsedTime)
+    {
+        if (elapsedTime.TotalSeconds < 1.0f)
+        {
+            return "just now";
+        }
+        else if (elapsedTime.TotalMinutes < 1.0f)
+        {
+            return "recently";
+        }
+        else if (elapsedTime.TotalHours < 1.0f)
+        {
+            int minutes = (int)Math.Floor(elapsedTime.TotalMinutes);
+            return minutes != 1 ? $"{minutes} minutes ago" : $"{minutes} minute ago";
+        }
+        else
+        {
+            int hours = (int)Math.Floor(elapsedTime.TotalHours);
+            return hours != 1 ? $"{hours} hours ago" : $"{hours} hour ago";
+        }
+    }
+
     public static void AttachToolTip(string text)
     {
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))

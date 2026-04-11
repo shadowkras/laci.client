@@ -826,6 +826,8 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         ImGui.Separator();
         _uiShared.BigText("UI");
+
+        var showSoundIndicator = _configService.Current.ShowSoundSourceIndicator;
         var showNameInsteadOfNotes = _configService.Current.ShowCharacterNameInsteadOfNotesForVisible;
         var showVisibleSeparate = _configService.Current.ShowVisibleUsersSeparately;
         var showOfflineSeparate = _configService.Current.ShowOfflineUsersSeparately;
@@ -1010,6 +1012,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
             _configService.Save();
         }
         _uiShared.DrawHelpText("Will show profiles that have the NSFW tag enabled");
+
+        if (ImGui.Checkbox("Show sound source indicator", ref showSoundIndicator))
+        {
+            _configService.Current.ShowSoundSourceIndicator = showSoundIndicator;
+            _configService.Save();
+        }
+        _uiShared.DrawHelpText("Will show an icon next to the pairs that are playing sound mods.");
 
         ImGui.Separator();
 

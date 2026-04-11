@@ -60,4 +60,6 @@ public class SyncConfig : ISyncConfiguration
     public int Version { get; set; } = 1;
     public NotificationLocation WarningNotification { get; set; } = NotificationLocation.Both;
     public bool UseFocusTarget { get; set; } = false;
+
+    public bool ShowSoundSourceIndicator { get; set; } = true;
 }

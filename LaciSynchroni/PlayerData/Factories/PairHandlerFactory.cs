@@ -5,6 +5,7 @@ using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
+using LaciSynchroni.SyncConfiguration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -21,6 +22,7 @@ public class PairHandlerFactory
     private readonly ILoggerFactory _loggerFactory;
     private readonly SyncMediator _syncMediator;
     private readonly PlayerPerformanceService _playerPerformanceService;
+    private readonly SyncConfigService _syncConfigService;
     private readonly ServerConfigurationManager _serverConfigManager;
     private readonly PluginWarningNotificationService _pluginWarningNotificationManager;
     private readonly ConcurrentPairLockService _concurrentPairLockService;
@@ -29,7 +31,7 @@ public class PairHandlerFactory
         FileDownloadManagerFactory fileDownloadManagerFactory, DalamudUtilService dalamudUtilService,
         PluginWarningNotificationService pluginWarningNotificationManager, IHostApplicationLifetime hostApplicationLifetime,
         FileCacheManager fileCacheManager, SyncMediator syncMediator, PlayerPerformanceService playerPerformanceService,
-        ServerConfigurationManager serverConfigManager, ConcurrentPairLockService concurrentPairLockService)
+        ServerConfigurationManager serverConfigManager, SyncConfigService syncConfigService, ConcurrentPairLockService concurrentPairLockService)
     {
         _loggerFactory = loggerFactory;
         _gameObjectHandlerFactory = gameObjectHandlerFactory;
@@ -41,6 +43,7 @@ public class PairHandlerFactory
         _fileCacheManager = fileCacheManager;
         _syncMediator = syncMediator;
         _playerPerformanceService = playerPerformanceService;
+        _syncConfigService = syncConfigService;
         _serverConfigManager = serverConfigManager;
         _concurrentPairLockService = concurrentPairLockService;
     }
@@ -49,6 +52,6 @@ public class PairHandlerFactory
     {
         return new PairHandler(_loggerFactory.CreateLogger<PairHandler>(), pair, _gameObjectHandlerFactory,
             _ipcManager, _fileDownloadManagerFactory.Create(), _pluginWarningNotificationManager, _dalamudUtilService, _hostApplicationLifetime,
-            _fileCacheManager, _syncMediator, _playerPerformanceService, _serverConfigManager, _concurrentPairLockService);
+            _fileCacheManager, _syncMediator, _playerPerformanceService, _syncConfigService, _serverConfigManager, _concurrentPairLockService);
     }
 }

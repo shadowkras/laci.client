@@ -57,6 +57,7 @@ public class Pair
     public long LastAppliedDataBytes => CachedPlayer?.LastAppliedDataBytes ?? -1;
     public long LastAppliedDataTris { get; set; } = -1;
     public long LastAppliedApproximateVRAMBytes { get; set; } = -1;
+    public DateTimeOffset? LastLoadedSoundSinceRedraw { get; set; } = null;
     public string Ident => _onlineUserIdentDto?.Ident ?? string.Empty;
     public ushort? VisibleHomeWorldId => _visibleHomeWorldId;
 

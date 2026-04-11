@@ -527,7 +527,7 @@ public class DrawUserPair
         var barButtonSize = _uiSharedService.GetIconButtonSize(FontAwesomeIcon.EllipsisV);
         var spacingX = ImGui.GetStyle().ItemSpacing.X;
         var windowEndX = ImGui.GetWindowContentRegionMin().X + UiSharedService.GetWindowContentRegionWidth();
-        float currentRightSide = windowEndX - barButtonSize.X;
+        float currentRightSide = windowEndX - (barButtonSize.X);
         
         if (_pair.IsPairRequested)
         {
@@ -556,7 +556,7 @@ public class DrawUserPair
         else
         {
             ImGui.SameLine(currentRightSide);
-            ImGui.AlignTextToFramePadding();
+            ImGui.AlignTextToFramePadding();            
 
             if (_uiSharedService.IconButton(FontAwesomeIcon.EllipsisV, _id.ToString()))
             {
@@ -739,6 +739,23 @@ public class DrawUserPair
                     ImGui.SameLine(currentRightSide);
                     _uiSharedService.IconText(icon);
                     UiSharedService.AttachToolTip(text);
+                }
+            }
+
+            if (Pair.LastLoadedSoundSinceRedraw != null)
+            {
+                var icon = FontAwesomeIcon.VolumeOff;
+                currentRightSide -= _uiSharedService.GetIconSize(icon).X + spacingX;
+                ImGui.SameLine(currentRightSide);
+                _uiSharedService.IconText(icon, ImGuiColors.HealerGreen);
+                UiSharedService.AttachToolTip($"Started playing modded audio {UiSharedService.ApproxElapsedTimeToString(DateTimeOffset.UtcNow - Pair.LastLoadedSoundSinceRedraw.Value)}.{UiSharedService.TooltipSeparator}CTRL + Click to disable sound sync with {_pair.UserData.AliasOrUID}.");
+                if (ImGui.IsItemClicked(ImGuiMouseButton.Left) && UiSharedService.CtrlPressed())
+                {
+                    var perm = _pair.UserPair!.OwnPermissions;
+
+                    perm.SetSticky(true);
+                    perm.SetDisableSounds(true);
+                    _ = _apiController.UserSetPairPermissions(Pair.ServerIndex, new(_pair.UserData, perm));
                 }
             }
         }

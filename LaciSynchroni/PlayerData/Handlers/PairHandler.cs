@@ -8,6 +8,7 @@ using LaciSynchroni.Services;
 using LaciSynchroni.Services.Events;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
+using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI.Files;
@@ -30,6 +31,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
     private readonly IpcManager _ipcManager;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly PlayerPerformanceService _playerPerformanceService;
+    private readonly SyncConfigService _syncConfigService;
     private readonly ServerConfigurationManager _serverConfigManager;
     private readonly PluginWarningNotificationService _pluginWarningNotificationManager;
     private readonly ConcurrentPairLockService _concurrentPairLockService;
@@ -54,7 +56,9 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         DalamudUtilService dalamudUtil, IHostApplicationLifetime lifetime,
         FileCacheManager fileDbManager, SyncMediator mediator,
         PlayerPerformanceService playerPerformanceService,
-        ServerConfigurationManager serverConfigManager, ConcurrentPairLockService concurrentPairLockService) : base(logger, mediator)
+        SyncConfigService syncConfigService,
+        ServerConfigurationManager serverConfigManager, 
+        ConcurrentPairLockService concurrentPairLockService) : base(logger, mediator)
     {
         Pair = pair;
         _gameObjectHandlerFactory = gameObjectHandlerFactory;
@@ -65,6 +69,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         _lifetime = lifetime;
         _fileDbManager = fileDbManager;
         _playerPerformanceService = playerPerformanceService;
+        _syncConfigService = syncConfigService;
         _serverConfigManager = serverConfigManager;
         _concurrentPairLockService = concurrentPairLockService;
         _penumbraCollection = _ipcManager.Penumbra.CreateTemporaryCollectionAsync(logger, Pair.UserData.UID).ConfigureAwait(false).GetAwaiter().GetResult();
@@ -109,6 +114,9 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
             _downloadCancellationTokenSource = _downloadCancellationTokenSource?.CancelRecreate();
             _applicationCancellationTokenSource = _applicationCancellationTokenSource?.CancelRecreate();
         });
+
+        if (_syncConfigService.Current.ShowSoundSourceIndicator)
+            Mediator.Subscribe<PenumbraResourceLoadMessage>(this, OnPenumbraResourceLoaded);
 
         LastAppliedDataBytes = -1;
     }
@@ -376,6 +384,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
                         break;
 
                     case PlayerChanges.ForcedRedraw:
+                        Pair.LastLoadedSoundSinceRedraw = null;
                         await _ipcManager.Penumbra.RedrawAsync(Logger, handler, applicationId, token).ConfigureAwait(false);
                         break;
 
@@ -682,6 +691,8 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
                 await _ipcManager.Penumbra.RedrawAsync(Logger, tempHandler, applicationId, cancelToken).ConfigureAwait(false);
             }
         }
+
+        Pair.LastLoadedSoundSinceRedraw = null;
     }
 
     private List<FileReplacementData> TryCalculateModdedDictionary(Guid applicationBase, CharacterData charaData, out Dictionary<(string GamePath, string? Hash), string> moddedDictionary, CancellationToken token)
@@ -743,5 +754,14 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         st.Stop();
         Logger.LogDebug("[BASE-{appBase}] ModdedPaths calculated in {time}ms, missing files: {count}, total files: {total}", applicationBase, st.ElapsedMilliseconds, missingFiles.Count, moddedDictionary.Keys.Count);
         return [.. missingFiles];
+    }
+
+    private void OnPenumbraResourceLoaded(PenumbraResourceLoadMessage resourceLoad)
+    {
+        if (resourceLoad.GameObject == PlayerCharacter && 
+            resourceLoad.GamePath.EndsWith(".scd", StringComparison.OrdinalIgnoreCase))
+        {
+            Pair.LastLoadedSoundSinceRedraw = DateTimeOffset.UtcNow;
+        }
     }
 }
