@@ -812,7 +812,8 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     public Task CyclePauseAsync(int serverIndex, UserData userData)
     {
-        if (serverIndex != ServerIndex)
+        if (serverIndex != ServerIndex ||
+            _connection is null)
         {
             return Task.CompletedTask;
         }
