@@ -613,11 +613,11 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
+                Logger.LogDebug(ex, $"Unexpected exception in {nameof(ClientHealthCheckAsync)}");
                 _healthCheckFailures++;
                 if (_healthCheckFailures > 10)
                 {
-                    Logger.LogError("Too many health check failures to {ServerName}, reconnecting", ServerName);
+                    Logger.LogInformation("Too many health check failures to {ServerName}, reconnecting", ServerName);
                     _doNotNotifyOnNextInfo = true;
                     await CreateConnectionsAsync().ConfigureAwait(false);
                     break;
