@@ -28,12 +28,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Updating chara data for {id}", updateDto.Id);
+            Logger.LogDebug("Updating chara data for {Id}", updateDto.Id);
             return await _connection!.InvokeAsync<CharaDataFullDto?>(nameof(CharaDataUpdate), updateDto).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to update chara data for {id}", updateDto.Id);
+            Logger.LogWarning(ex, "Failed to update chara data for {Id}", updateDto.Id);
             return null;
         }
     }
@@ -44,12 +44,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Deleting chara data for {id}", id);
+            Logger.LogDebug("Deleting chara data for {Id}", id);
             return await _connection!.InvokeAsync<bool>(nameof(CharaDataDelete), id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to delete chara data for {id}", id);
+            Logger.LogWarning(ex, "Failed to delete chara data for {Id}", id);
             return false;
         }
     }
@@ -60,12 +60,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Getting metainfo for chara data {id}", id);
+            Logger.LogDebug("Getting metainfo for chara data {Id}", id);
             return await _connection!.InvokeAsync<CharaDataMetaInfoDto?>(nameof(CharaDataGetMetainfo), id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to get meta info for chara data {id}", id);
+            Logger.LogWarning(ex, "Failed to get meta info for chara data {Id}", id);
             return null;
         }
     }
@@ -76,12 +76,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Attempting to restore chara data {id}", id);
+            Logger.LogDebug("Attempting to restore chara data {Id}", id);
             return await _connection!.InvokeAsync<CharaDataFullDto?>(nameof(CharaDataAttemptRestore), id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to restore chara data for {id}", id);
+            Logger.LogWarning(ex, "Failed to restore chara data for {Id}", id);
             return null;
         }
     }
@@ -124,12 +124,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Getting download chara data for {id}", id);
+            Logger.LogDebug("Getting download chara data for {Id}", id);
             return await _connection!.InvokeAsync<CharaDataDownloadDto>(nameof(CharaDataDownload), id).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to get download chara data for {id}", id);
+            Logger.LogWarning(ex, "Failed to get download chara data for {Id}", id);
             return null;
         }
     }
@@ -172,12 +172,12 @@ public partial class SyncHubClient
 
         try
         {
-            Logger.LogDebug("Joining GPose Lobby {id}", lobbyId);
+            Logger.LogDebug("Joining GPose Lobby {Id}", lobbyId);
             return await _connection!.InvokeAsync<List<UserData>>(nameof(GposeLobbyJoin), lobbyId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "Failed to join GPose lobby {id}", lobbyId);
+            Logger.LogWarning(ex, "Failed to join GPose lobby {Id}", lobbyId);
             return [];
         }
     }

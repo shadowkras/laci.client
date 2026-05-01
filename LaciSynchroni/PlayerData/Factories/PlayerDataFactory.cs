@@ -55,17 +55,17 @@ public class PlayerDataFactory
             catch
             {
                 pointerIsZero = true;
-                _logger.LogDebug("NullRef for {object}", playerRelatedObject);
+                _logger.LogDebug("NullRef for {Object}", playerRelatedObject);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not create data for {object}", playerRelatedObject);
+            _logger.LogWarning(ex, "Could not create data for {Object}", playerRelatedObject);
         }
 
         if (pointerIsZero)
         {
-            _logger.LogTrace("Pointer was zero for {objectKind}", playerRelatedObject.ObjectKind);
+            _logger.LogTrace("Pointer was zero for {ObjectKind}", playerRelatedObject.ObjectKind);
             return null;
         }
 
@@ -78,12 +78,12 @@ public class PlayerDataFactory
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug("Cancelled creating Character data for {object}", playerRelatedObject);
+            _logger.LogDebug("Cancelled creating Character data for {Object}", playerRelatedObject);
             throw;
         }
         catch (Exception e)
         {
-            _logger.LogWarning(e, "Failed to create {object} data", playerRelatedObject);
+            _logger.LogWarning(e, "Failed to create {Object} data", playerRelatedObject);
         }
 
         return null;
@@ -104,7 +104,7 @@ public class PlayerDataFactory
         var objectKind = playerRelatedObject.ObjectKind;
         CharacterDataFragment fragment = objectKind == ObjectKind.Player ? new CharacterDataFragmentPlayer() : new();
 
-        _logger.LogDebug("Building character data for {obj}", playerRelatedObject);
+        _logger.LogDebug("Building character data for {Object}", playerRelatedObject);
 
         // wait until chara is not drawing and present so nothing spontaneously explodes
         await _dalamudUtil.WaitWhileCharacterIsDrawing(_logger, playerRelatedObject, Guid.NewGuid(), 30000, ct: ct).ConfigureAwait(false);
@@ -143,7 +143,7 @@ public class PlayerDataFactory
         _logger.LogDebug("== Static Replacements ==");
         foreach (var replacement in fragment.FileReplacements.Where(i => i.HasFileReplacement).OrderBy(i => i.GamePaths.First(), StringComparer.OrdinalIgnoreCase))
         {
-            _logger.LogDebug("=> {repl}", replacement);
+            _logger.LogDebug("=> {Replacement}", replacement);
             ct.ThrowIfCancellationRequested();
         }
 
@@ -157,17 +157,17 @@ public class PlayerDataFactory
             {
                 if (_transientResourceManager.AddTransientResource(objectKind, item))
                 {
-                    _logger.LogDebug("Marking static {item} for Pet as transient", item);
+                    _logger.LogDebug("Marking static {Item} for Pet as transient", item);
                 }
             }
 
-            _logger.LogTrace("Clearing {count} Static Replacements for Pet", fragment.FileReplacements.Count);
+            _logger.LogTrace("Clearing {Count} Static Replacements for Pet", fragment.FileReplacements.Count);
             fragment.FileReplacements.Clear();
         }
 
         ct.ThrowIfCancellationRequested();
 
-        _logger.LogDebug("Handling transient update for {obj}", playerRelatedObject);
+        _logger.LogDebug("Handling transient update for {Object}", playerRelatedObject);
 
         // remove all potentially gathered paths from the transient resource manager that are resolved through static resolving
         _transientResourceManager.ClearTransientPaths(objectKind, fragment.FileReplacements.SelectMany(c => c.GamePaths).ToList());
@@ -179,7 +179,7 @@ public class PlayerDataFactory
         _logger.LogDebug("== Transient Replacements ==");
         foreach (var replacement in resolvedTransientPaths.Select(c => new FileReplacement([.. c.Value], c.Key)).OrderBy(f => f.ResolvedPath, StringComparer.Ordinal))
         {
-            _logger.LogDebug("=> {repl}", replacement);
+            _logger.LogDebug("=> {Replacement}", replacement);
             fragment.FileReplacements.Add(replacement);
         }
 
@@ -197,10 +197,10 @@ public class PlayerDataFactory
         Task<string?> getCustomizeData = _ipcManager.CustomizePlus.GetScaleAsync(playerRelatedObject.Address);
         Task<string> getHonorificTitle = _ipcManager.Honorific.GetTitle();
         fragment.GlamourerString = await getGlamourerData.ConfigureAwait(false);
-        _logger.LogDebug("Glamourer is now: {data}", fragment.GlamourerString);
+        _logger.LogDebug("Glamourer is now: {Data}", fragment.GlamourerString);
         var customizeScale = await getCustomizeData.ConfigureAwait(false);
         fragment.CustomizePlusScale = customizeScale ?? string.Empty;
-        _logger.LogDebug("Customize is now: {data}", fragment.CustomizePlusScale);
+        _logger.LogDebug("Customize is now: {Data}", fragment.CustomizePlusScale);
 
         if (objectKind == ObjectKind.Player)
         {
@@ -208,22 +208,22 @@ public class PlayerDataFactory
             playerFragment.ManipulationString = _ipcManager.Penumbra.GetMetaManipulations();
 
             playerFragment!.HonorificData = await getHonorificTitle.ConfigureAwait(false);
-            _logger.LogDebug("Honorific is now: {data}", playerFragment!.HonorificData);
+            _logger.LogDebug("Honorific is now: {Data}", playerFragment!.HonorificData);
 
             playerFragment!.HeelsData = await getHeelsOffset.ConfigureAwait(false);
-            _logger.LogDebug("Heels is now: {heels}", playerFragment!.HeelsData);
+            _logger.LogDebug("Heels is now: {Data}", playerFragment!.HeelsData);
 
             playerFragment!.MoodlesData = await _ipcManager.Moodles.GetStatusAsync(playerRelatedObject.Address).ConfigureAwait(false) ?? string.Empty;
-            _logger.LogDebug("Moodles is now: {moodles}", playerFragment!.MoodlesData);
+            _logger.LogDebug("Moodles is now: {Data}", playerFragment!.MoodlesData);
 
             playerFragment!.PetNamesData = _ipcManager.PetNames.GetLocalNames();
-            _logger.LogDebug("Pet Nicknames is now: {petnames}", playerFragment!.PetNamesData);
+            _logger.LogDebug("Pet Nicknames is now: {Data}", playerFragment!.PetNamesData);
         }
 
         ct.ThrowIfCancellationRequested();
 
         var toCompute = fragment.FileReplacements.Where(f => !f.IsFileSwap).ToArray();
-        _logger.LogDebug("Getting Hashes for {amount} Files", toCompute.Length);
+        _logger.LogDebug("Getting Hashes for {Amount} Files", toCompute.Length);
         var computedPaths = _fileCacheManager.GetFileCachesByPaths(toCompute.Select(c => c.ResolvedPath).ToArray());
         foreach (var file in toCompute)
         {
@@ -233,7 +233,7 @@ public class PlayerDataFactory
         var removed = fragment.FileReplacements.RemoveWhere(f => !f.IsFileSwap && string.IsNullOrEmpty(f.Hash));
         if (removed > 0)
         {
-            _logger.LogDebug("Removed {amount} of invalid files", removed);
+            _logger.LogDebug("Removed {Amount} of invalid files", removed);
         }
 
         ct.ThrowIfCancellationRequested();
@@ -255,7 +255,7 @@ public class PlayerDataFactory
             }
         }
 
-        _logger.LogInformation("Building character data for {obj} took {time}ms", objectKind, TimeSpan.FromTicks(DateTime.UtcNow.Ticks - start.Ticks).TotalMilliseconds);
+        _logger.LogInformation("Building character data for {ObjectKind} took {Time}ms", objectKind, TimeSpan.FromTicks(DateTime.UtcNow.Ticks - start.Ticks).TotalMilliseconds);
 
         return fragment;
     }
@@ -266,7 +266,7 @@ public class PlayerDataFactory
 
         foreach (var kvp in boneIndices)
         {
-            _logger.LogDebug("Found {skellyname} ({idx} bone indices) on player: {bones}", kvp.Key, kvp.Value.Any() ? kvp.Value.Max() : 0, string.Join(',', kvp.Value));
+            _logger.LogDebug("Found {SkellyName} ({Idx} bone indices) on player: {Bones}", kvp.Key, kvp.Value.Any() ? kvp.Value.Max() : 0, string.Join(',', kvp.Value));
         }
 
         if (boneIndices.All(u => u.Value.Count == 0)) return;
@@ -283,17 +283,16 @@ public class PlayerDataFactory
                 // 105 is the maximum vanilla skellington spoopy bone index
                 if (skeletonIndices.All(k => k.Value.Max() <= 105))
                 {
-                    _logger.LogTrace("All indices of {path} are <= 105, ignoring", file.ResolvedPath);
+                    _logger.LogTrace("All indices of {Path} are <= 105, ignoring", file.ResolvedPath);
                     continue;
                 }
 
-                _logger.LogDebug("Verifying bone indices for {path}, found {x} skeletons", file.ResolvedPath, skeletonIndices.Count);
-
+                _logger.LogDebug("Verifying bone indices for {Path}, found {X} skeletons", file.ResolvedPath, skeletonIndices.Count);
                 foreach (var boneCount in skeletonIndices.Select(k => k).ToList())
                 {
                     if (boneCount.Value.Max() > boneIndices.SelectMany(b => b.Value).Max())
                     {
-                        _logger.LogWarning("Found more bone indices on the animation {path} skeleton {skl} (max indice {idx}) than on any player related skeleton (max indice {idx2})",
+                        _logger.LogWarning("Found more bone indices on the animation {Path} skeleton {Skl} (max indice {Idx}) than on any player related skeleton (max indice {Idx2})",
                             file.ResolvedPath, boneCount.Key, boneCount.Value.Max(), boneIndices.SelectMany(b => b.Value).Max());
                         validationFailed = true;
                         break;
@@ -304,7 +303,7 @@ public class PlayerDataFactory
             if (validationFailed)
             {
                 noValidationFailed++;
-                _logger.LogDebug("Removing {file} from sent file replacements and transient data", file.ResolvedPath);
+                _logger.LogDebug("Removing {File} from sent file replacements and transient data", file.ResolvedPath);
                 fragment.FileReplacements.Remove(file);
                 foreach (var gamePath in file.GamePaths)
                 {

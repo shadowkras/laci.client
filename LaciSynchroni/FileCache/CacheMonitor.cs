@@ -226,7 +226,7 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
 
                     _watcherChanges.Remove(oldPath);
                     _watcherChanges[file] = new(WatcherChangeTypes.Renamed, oldPath);
-                    Logger.LogTrace("FSW Renamed: {path} -> {new}", oldPath, file);
+                    Logger.LogTrace("FSW Renamed: {Path} -> {New}", oldPath, file);
 
                 }
             }
@@ -241,7 +241,7 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
                 _watcherChanges[e.FullPath] = new(WatcherChangeTypes.Renamed, e.OldFullPath);
             }
 
-            Logger.LogTrace("FSW Renamed: {path} -> {new}", e.OldFullPath, e.FullPath);
+            Logger.LogTrace("FSW Renamed: {OldPath} -> {NewPath}", e.OldFullPath, e.FullPath);
         }
 
         _ = PenumbraWatcherExecution();

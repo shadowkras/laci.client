@@ -50,7 +50,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     private DateTime _delayedFrameworkUpdateCheck = DateTime.UtcNow;
     private string _lastGlobalBlockPlayer = string.Empty;
     private string _lastGlobalBlockReason = string.Empty;
-    private ushort _lastZone = 0;
+    private uint _lastZone = 0;
     private readonly Dictionary<string, (string Name, nint Address)> _playerCharas = new(StringComparer.Ordinal);
     private readonly List<string> _notUpdatedCharas = [];
     private bool _sentBetweenAreas = false;
@@ -217,7 +217,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     {
         EnsureIsOnFramework();
         var objTableObj = _objectTable[index];
-        if (objTableObj!.ObjectKind != ObjectKind.Player) return null;
+        if (objTableObj!.ObjectKind != ObjectKind.Pc) return null;
         return (ICharacter)objTableObj;
     }
 
@@ -249,13 +249,13 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
 
     public IEnumerable<ICharacter?> GetGposeCharactersFromObjectTable()
     {
-        return _objectTable.Where(o => o.ObjectIndex > 200 && o.ObjectKind == ObjectKind.Player).Cast<ICharacter>();
+        return _objectTable.Where(o => o.ObjectIndex > 200 && o.ObjectKind == ObjectKind.Pc).Cast<ICharacter>();
     }
 
     public bool GetIsPlayerPresent()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer != null && _clientState.LocalPlayer.IsValid();
+        return _objectTable.LocalPlayer != null && _objectTable.LocalPlayer.IsValid();
     }
 
     public async Task<bool> GetIsPlayerPresentAsync()
@@ -299,7 +299,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     public IPlayerCharacter GetPlayerCharacter()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer!;
+        return _objectTable.LocalPlayer!;
     }
 
     public IntPtr GetPlayerCharacterFromCachedTableByIdent(string characterName)
@@ -311,7 +311,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     public string GetPlayerName()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer?.Name.ToString() ?? "--";
+        return _objectTable.LocalPlayer?.Name.ToString() ?? "--";
     }
 
     public async Task<string> GetPlayerNameAsync()
@@ -344,7 +344,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     public IntPtr GetPlayerPtr()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer?.Address ?? IntPtr.Zero;
+        return _objectTable.LocalPlayer?.Address ?? IntPtr.Zero;
     }
 
     public async Task<IntPtr> GetPlayerPointerAsync()
@@ -355,13 +355,13 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     public uint GetHomeWorldId()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer?.HomeWorld.RowId ?? 0;
+        return _objectTable.LocalPlayer?.HomeWorld.RowId ?? 0;
     }
 
     public uint GetWorldId()
     {
         EnsureIsOnFramework();
-        return _clientState.LocalPlayer!.CurrentWorld.RowId;
+        return _objectTable.LocalPlayer!.CurrentWorld.RowId;
     }
 
     public unsafe LocationInfo GetMapData()
@@ -370,8 +370,8 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
         var agentMap = AgentMap.Instance();
         var houseMan = HousingManager.Instance();
         uint serverId = 0;
-        if (_clientState.LocalPlayer == null) serverId = 0;
-        else serverId = _clientState.LocalPlayer.CurrentWorld.RowId;
+        if (_objectTable.LocalPlayer == null) serverId = 0;
+        else serverId = _objectTable.LocalPlayer.CurrentWorld.RowId;
         uint mapId = agentMap == null ? 0 : agentMap->CurrentMapId;
         uint territoryId = agentMap == null ? 0 : agentMap->CurrentTerritoryId;
         uint divisionId = houseMan == null ? 0 : (uint)(houseMan->GetCurrentDivision());
@@ -489,7 +489,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
         _framework.Update += FrameworkOnUpdate;
         if (IsLoggedIn)
         {
-            _classJobId = _clientState.LocalPlayer!.ClassJob.RowId;
+            _classJobId = _objectTable.LocalPlayer!.ClassJob.RowId;
         }
 
         _logger.LogInformation("Started DalamudUtilService");
@@ -643,7 +643,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
 
     private unsafe void FrameworkOnUpdateInternal()
     {
-        if ((_clientState.LocalPlayer?.IsDead ?? false) && _condition[ConditionFlag.BoundByDuty])
+        if ((_objectTable.LocalPlayer?.IsDead ?? false) && _condition[ConditionFlag.BoundByDuty])
         {
             return;
         }
@@ -661,7 +661,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
                     for (int i = 0; i < 200; i += 2)
                     {
                         var chara = _objectTable[i];
-                        if (chara == null || chara.ObjectKind != ObjectKind.Player)
+                        if (chara == null || chara.ObjectKind != ObjectKind.Pc)
                             continue;
 
                         if (_blockedCharacterHandler.IsCharacterBlocked(chara.Address, out bool firstTime) && firstTime)
@@ -768,7 +768,7 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
                 Mediator.Publish(new ResumeScanMessage(nameof(ConditionFlag.BetweenAreas)));
             }
 
-            var localPlayer = _clientState.LocalPlayer;
+            var localPlayer = _objectTable.LocalPlayer;
             if (localPlayer != null)
             {
                 _classJobId = localPlayer.ClassJob.RowId;

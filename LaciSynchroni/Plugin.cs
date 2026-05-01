@@ -34,7 +34,7 @@ using System.Reflection;
 namespace LaciSynchroni;
 
 [SuppressMessage("ReSharper", "UnusedType.Global")]
-public sealed class Plugin : IDalamudPlugin
+public sealed class Plugin : IAsyncDalamudPlugin
 {
     private readonly IHost _host;
 
@@ -262,9 +262,14 @@ public sealed class Plugin : IDalamudPlugin
         _ = _host.StartAsync();
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _host.StopAsync().GetAwaiter().GetResult();
+        await _host.StopAsync().ConfigureAwait(false);
         _host.Dispose();
+    }
+
+    public Task LoadAsync(CancellationToken cancellationToken)
+    {
+        return _host.StartAsync(cancellationToken);
     }
 }
