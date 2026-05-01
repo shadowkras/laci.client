@@ -6,5 +6,6 @@
         public string Name { get; set; } = string.Empty;
         public string Uri { get; set; } = string.Empty;
         public string HubUri { get; set; } = string.Empty;
+        public string AuthUri { get; set; } = string.Empty;
     }
 }

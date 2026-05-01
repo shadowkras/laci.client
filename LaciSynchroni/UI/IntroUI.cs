@@ -41,6 +41,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
     private string _customServerName = string.Empty;
     private string _customServerUri = string.Empty;
     private string _customServerHub= string.Empty;
+    private string _customServerAuth = string.Empty;
     private bool _hasAddedCustomService = false;
     private bool _isConnectingCustomService;
 
@@ -402,6 +403,8 @@ public partial class IntroUi : WindowMediatorSubscriberBase
         ImGui.InputText("Custom Service URI", ref _customServerUri, 255);
         ImGui.SetNextItemWidth(250);
         ImGui.InputText("Custom Service Hub (Optional, only fill if prompted)", ref _customServerHub, 255);
+        ImGui.SetNextItemWidth(250);
+        ImGui.InputText("Custom Service Auth (Optional, only fill if prompted)", ref _customServerAuth, 255);
 
         if (ImGui.Button("Use as custom service"))
         {
@@ -411,6 +414,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                 ServerUri = _customServerUri,
                 UseAdvancedUris = !_customServerHub.IsNullOrWhitespace(),
                 ServerHubUri = _customServerHub,
+                ServerAuthUri = _customServerAuth,
                 UseOAuth2 = true
             });
             _hasAddedCustomService = true;

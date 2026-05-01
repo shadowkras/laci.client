@@ -63,15 +63,14 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
 
         try
         {
+            var serverAuthUri = new UriBuilder(GetServerAuthUri(ServerToUse)).WsToHttp().Uri;
+
             if (!isRenewal)
             {
-                _logger.LogDebug("GetNewToken: Requesting token for {ServerName}", ServerName);
-
+                _logger.LogDebug("GetNewToken: Requesting token for {ServerName} at {ServerAuthUri}", ServerName, serverAuthUri);
                 if (!ServerToUse.UseOAuth2)
                 {
-                    tokenUri = AuthRoutes.AuthFullPath(new Uri(ServerToUse.ServerUri
-                        .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                        .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
+                    tokenUri = AuthRoutes.AuthFullPath(serverAuthUri);
                     var secretKey = _serverManager.GetSecretKey(out _, _serverIndex)!;
                     var auth = secretKey.GetHash256();
                     _logger.LogInformation("Sending SecretKey Request to server {ServerName} with auth {Auth}", ServerName,
@@ -85,9 +84,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                 }
                 else
                 {
-                    tokenUri = AuthRoutes.AuthWithOauthFullPath(new Uri(ServerToUse.ServerUri
-                        .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                        .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
+                    tokenUri = AuthRoutes.AuthWithOauthFullPath(serverAuthUri);
                     HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, tokenUri.ToString());
                     request.Content = new FormUrlEncodedContent([
                         new KeyValuePair<string, string>("uid", identifier.UID),
@@ -102,11 +99,9 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             }
             else
             {
-                _logger.LogDebug("GetNewToken: Renewal for {ServerName}", ServerName);
+                _logger.LogDebug("GetNewToken: Renewal for {ServerName} at {ServerAuthUri}", ServerName, serverAuthUri);
 
-                tokenUri = AuthRoutes.RenewTokenFullPath(new Uri(ServerToUse.ServerUri
-                    .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-                    .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
+                tokenUri = AuthRoutes.RenewTokenFullPath(serverAuthUri);
                 HttpRequestMessage request = new(HttpMethod.Get, tokenUri.ToString());
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _tokenCache[identifier]);
                 result = await _httpClient.SendAsync(request, ct).ConfigureAwait(false);
@@ -162,6 +157,14 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
         }
 
         return response;
+    }
+
+    private string GetServerAuthUri(ServerStorage serverTouse)
+    {
+        if(serverTouse.UseAdvancedUris && !string.IsNullOrEmpty(serverTouse.ServerAuthUri)) 
+            return serverTouse.ServerAuthUri;
+        else
+            return serverTouse.ServerUri;
     }
 
     private async Task<JwtIdentifier?> GetIdentifier()
@@ -276,9 +279,8 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                 return false;
         }
 
-        var tokenUri = AuthRoutes.RenewOAuthTokenFullPath(new Uri(currentServer.ServerUri
-            .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
-            .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
+        var serverAuthUri = new UriBuilder(GetServerAuthUri(currentServer)).WsToHttp().Uri;
+        var tokenUri = AuthRoutes.RenewOAuthTokenFullPath(serverAuthUri);
         HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, tokenUri.ToString());
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", oauth2.Value.OAuthToken);
         _logger.LogInformation("Sending Request to server {ServerName} with auth {Auth}", ServerName,

@@ -62,6 +62,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
     private bool _useAdvancedUris = false;
     private bool _bypassApiVersionCheck = false;
     private string _serverHubUri = "";
+    private string _serverAuthUri = "";
     private Task<Uri?>? _discordOAuthCheck;
     private Task<string?>? _discordOAuthGetCode;
     private CancellationTokenSource _discordOAuthGetCts = new();
@@ -935,6 +936,8 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
             {
                 ImGui.SetNextItemWidth(250);
                 ImGui.InputText("Service Hub URI", ref _serverHubUri, 255);
+                ImGui.SetNextItemWidth(250);
+                ImGui.InputText("Service Auth URI", ref _serverAuthUri, 255);
             }
 
             if (IconTextButton(FontAwesomeIcon.Plus, "Add Custom Service")
@@ -947,6 +950,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                     ServerUri = _customServerUri,
                     UseAdvancedUris = _useAdvancedUris,
                     ServerHubUri = _serverHubUri,
+                    ServerAuthUri = _serverAuthUri,
                     BypassVersionCheck = _bypassApiVersionCheck,
                     UseOAuth2 = true
                 });

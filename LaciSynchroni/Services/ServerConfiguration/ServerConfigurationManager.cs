@@ -213,7 +213,8 @@ public class ServerConfigurationManager
                 Id = index,
                 Name = v.ServerName,
                 Uri = v.ServerUri,
-                HubUri = v.ServerHubUri
+                HubUri = v.ServerHubUri,
+                AuthUri = v.ServerAuthUri
             }).ToList();
         return items;
     }
