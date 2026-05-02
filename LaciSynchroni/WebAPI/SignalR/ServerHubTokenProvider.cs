@@ -108,6 +108,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             }
 
             response = await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+            _logger.LogTrace(response);
             result.EnsureSuccessStatusCode();
             _tokenCache[identifier] = response;
         }

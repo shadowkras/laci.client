@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
-    <Version>2.1.9</Version>
+    <Version>2.1.10</Version>
     <PackageProjectUrl>https://github.com/LaciSynchroni/client</PackageProjectUrl>
   </PropertyGroup>
   <ItemGroup>
@@ -57,6 +57,6 @@
     <ProjectReference Include="../Common/LaciSynchroni.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Update="DalamudPackager" Version="14.0.2" />
+    <PackageReference Update="DalamudPackager" Version="15.0.0" />
   </ItemGroup>
 </Project>
