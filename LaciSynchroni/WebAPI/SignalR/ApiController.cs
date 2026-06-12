@@ -301,22 +301,11 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private SyncHubClient GetOrCreateForServer(ServerIndex serverIndex, [CallerMemberName] string callerName = "")
     {
         Logger.LogDebug("({CallerName}) GetOrCreateForServer: serverIndex={ServerIndex}", callerName, serverIndex);
-        foreach (var clientToDispose in _syncHubClients
-            .Where(client => client.Value.ServerIndex == serverIndex)
-            .Select(client => client.Value)
-            .ToList())
+        if (_syncHubClients.TryGetValue(serverIndex, out var client))
         {
-            try
-            {
-                clientToDispose.Dispose();
-            }
-            catch
-            {
-                //ignore any exceptions if the client is already disposed or similar, we just want to make sure it's gone before we create a new one
-            }
+            client.Dispose();
         }
-        var client = _syncHubClients[serverIndex] = CreateNewClient(serverIndex);
-        return client;
+        return _syncHubClients[serverIndex] = CreateNewClient(serverIndex);
     }
 
     private Task ConnectMultiClient(ServerIndex serverIndex)
