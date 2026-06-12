@@ -12,6 +12,7 @@ using LaciSynchroni.Utils;
 using LaciSynchroni.WebAPI.SignalR.Utils;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Linq.Expressions;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -300,7 +301,21 @@ public sealed partial class ApiController : DisposableMediatorSubscriberBase
     private SyncHubClient GetOrCreateForServer(ServerIndex serverIndex, [CallerMemberName] string callerName = "")
     {
         Logger.LogDebug("({CallerName}) GetOrCreateForServer: serverIndex={ServerIndex}", callerName, serverIndex);
-        var client = _syncHubClients.GetOrAdd(serverIndex, CreateNewClient);
+        foreach (var clientToDispose in _syncHubClients
+            .Where(client => client.Value.ServerIndex == serverIndex)
+            .Select(client => client.Value)
+            .ToList())
+        {
+            try
+            {
+                clientToDispose.Dispose();
+            }
+            catch
+            {
+                //ignore any exceptions if the client is already disposed or similar, we just want to make sure it's gone before we create a new one
+            }
+        }
+        var client = _syncHubClients[serverIndex] = CreateNewClient(serverIndex);
         return client;
     }
 

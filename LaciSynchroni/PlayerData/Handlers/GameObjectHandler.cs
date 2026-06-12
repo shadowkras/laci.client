@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using static FFXIVClientStructs.FFXIV.Client.Game.Character.DrawDataContainer;
 using ObjectKind = LaciSynchroni.Common.Data.Enum.ObjectKind;
+using ObjectType = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.ObjectType;
 
 namespace LaciSynchroni.PlayerData.Handlers;
 

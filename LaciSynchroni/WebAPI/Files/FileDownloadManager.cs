@@ -53,6 +53,9 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
     public List<FileTransfer> ForbiddenTransfers => _orchestrator.ForbiddenTransfers;
 
     public bool IsDownloading => !CurrentDownloads.Any();
+    
+    private delegate void DownloadDataCallback(Span<byte> data);
+
 
     /// <summary>
     /// XORs each byte in the buffer with 42 (small obfuscation).
@@ -503,7 +506,21 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                 // Download the compressed file directly
                 downloadTracker.DownloadStatus = DownloadStatus.Downloading;
                 Logger.LogDebug("{Hash} Beginning direct download of file from {Url}", directDownload.Hash, directDownloadAbsoluteUri);
-                await DownloadFileThrottled(serverIndex,directDownload.DownloadUri, tempFilename, progress, token).ConfigureAwait(false);
+                DownloadDataCallback? munge = null;
+                if (directDownload.MungeKey != null) //Support for psync munging.
+                {
+                    long mungeOffset = 0;
+                    byte[] mungeKeyBytes = Encoding.ASCII.GetBytes(directDownload.MungeKey);
+                    munge = span =>
+                    {
+                        for (int i = 0; i < span.Length; i++)
+                        {
+                            span[i] = (byte)(span[i] ^ mungeKeyBytes[mungeOffset]);
+                            mungeOffset = (mungeOffset + 1) % mungeKeyBytes.Length;
+                        }
+                    };
+                }
+                await DownloadFileThrottled(serverIndex, directDownload.DownloadUri, tempFilename, progress, munge, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException ex)
             {
@@ -556,7 +573,8 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         ClearDownload();
     }
 
-    private async Task DownloadFileThrottled(int serverIndex, Uri requestUrl, string destinationFilename, IProgress<long> progress, CancellationToken ct)
+    private async Task DownloadFileThrottled(int serverIndex, Uri requestUrl, string destinationFilename, IProgress<long> progress,
+         DownloadDataCallback? callback, CancellationToken ct)
     {
         HttpResponseMessage response = null!;
         try
@@ -638,6 +656,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                 while ((bytesRead = await stream.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
                 {
                     ct.ThrowIfCancellationRequested();
+                    callback?.Invoke(buffer.AsSpan(0, bytesRead));
                     await fileStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct).ConfigureAwait(false);
 
                     progress.Report(bytesRead);
