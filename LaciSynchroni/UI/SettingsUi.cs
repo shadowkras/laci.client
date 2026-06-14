@@ -581,6 +581,8 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
         _uiShared.DrawHelpText("Having modified game files will still mark your logs with UNSUPPORTED and you will not receive support, message shown or not." + UiSharedService.TooltipSeparator
             + "Keeping LOD enabled can lead to more crashes. Use at your own risk.");
+
+        DrawBlake3Support();
     }
 
     private void DrawFileStorageSettings()
@@ -1412,7 +1414,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     selectedServer.ShowPairingRequestNotification = showPairingRequestNotification;
                     _serverConfigurationManager.Save();
                 }
-                _uiShared.DrawHelpText("This will enable new pairing notification requests, if the service has those enabled.");
+                _uiShared.DrawHelpText("This will enable new pairing notification requests, if the service has those enabled.");                
 
                 ImGui.Separator();
 
@@ -2202,6 +2204,42 @@ public class SettingsUi : WindowMediatorSubscriberBase
             }
         }
     }
+
+    private void DrawBlake3Support()
+    {
+
+        bool enableBlake3 = _configService.Current.BetaEnableBlake3;
+        bool reHashingDone = _configService.Current.BetaBlake3HashingDone;
+        bool initialScanDone = _configService.Current.InitialScanComplete;
+        // Some checks might be running in background after boot, don't allow changing while that happens
+        using (ImRaii.Disabled(_cacheMonitor.IsScanRunning))
+        {
+            if (ImGui.Checkbox("(BETA) Enable BLAKE3 hash support", ref enableBlake3))
+            {
+                _configService.Current.BetaEnableBlake3 = enableBlake3;
+                if (!enableBlake3)
+                {
+                    _configService.Current.BetaBlake3HashingDone = false;
+                }
+                _configService.Save();
+            }
+            _uiShared.DrawHelpText("Enabling this will result both SHA1 and BLAKE3 hash calculation, allowing compatibility with BLAKE3 based services.");
+        }
+
+        if (enableBlake3 && initialScanDone)
+        {
+            if (!reHashingDone)
+            {
+                UiSharedService.TextWrapped("You need to re-scan your Penumbra folder to enable BLAKE3 support. The button below will start that process.");
+            }
+            else
+            {
+                UiSharedService.TextWrapped("BLAKE3 hashing has been done. If you experience any issues, consider re-scanning your Penumbra here.");
+            }
+            _uiShared.DrawFileScanState();
+        }
+    }
+
 
     private void UiSharedService_GposeEnd()
     {

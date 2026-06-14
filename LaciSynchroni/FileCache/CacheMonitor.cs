@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.Interop.Ipc;
+﻿using Dalamud.Utility;
+using LaciSynchroni.Interop.Ipc;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.SyncConfiguration;
@@ -19,6 +20,10 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
     private readonly IpcManager _ipcManager;
     private readonly PerformanceCollectorService _performanceCollector;
     private long _currentFileProgress = 0;
+    private long _currentUpdateProgress = 0;
+    private long _currentStartTime = DateTime.UtcNow.Ticks;
+    public long CurrentStartTime => _currentStartTime;
+    private bool Blake3Enabled => _configService.Current.BetaEnableBlake3;
     private CancellationTokenSource _scanCancellationTokenSource = new();
     private readonly CancellationTokenSource _periodicCalculationTokenSource = new();
     public static readonly IImmutableList<string> AllowedFileExtensions = [".mdl", ".tex", ".mtrl", ".tmb", ".pap", ".avfx", ".atex", ".sklb", ".eid", ".phyb", ".pbd", ".scd", ".skp", ".shpk"];
@@ -88,12 +93,14 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
     }
 
     public long CurrentFileProgress => _currentFileProgress;
+    public long CurrentUpdateProgress => _currentUpdateProgress;
     public long FileCacheSize { get; set; }
     public long FileCacheDriveFree { get; set; }
     public ConcurrentDictionary<string, int> HaltScanLocks { get; set; } = new(StringComparer.Ordinal);
     public bool IsScanRunning => CurrentFileProgress > 0 || TotalFiles > 0;
     public long TotalFiles { get; private set; }
     public long TotalFilesStorage { get; private set; }
+    public long TotalUpdateCount { get; private set; }
 
     public void HaltScan(string source)
     {
@@ -352,6 +359,7 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
     public void InvokeScan()
     {
         TotalFiles = 0;
+        _currentStartTime = DateTime.UtcNow.Ticks;
         _currentFileProgress = 0;
         _scanCancellationTokenSource = _scanCancellationTokenSource?.CancelRecreate() ?? new CancellationTokenSource();
         var token = _scanCancellationTokenSource.Token;
@@ -558,15 +566,15 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
                 {
                     try
                     {
-                        if (ct.IsCancellationRequested) return;
-
-                        if (!_ipcManager.Penumbra.APIAvailable)
-                        {
-                            Logger.LogWarning("Penumbra not available");
+                        if (!ShouldContinue(ct))
                             return;
-                        }
 
                         var validatedCacheResult = _fileDbManager.ValidateFileCacheEntity(workload);
+                        if (Blake3Enabled && workload.Blake3Hash.IsNullOrEmpty())
+                        {
+                            lock (sync) { entitiesToRemove.Add(validatedCacheResult.FileCache); }
+                            continue;
+                        }
                         if (validatedCacheResult.State != FileState.RequireDeletion)
                         {
                             lock (sync) { allScannedFiles[validatedCacheResult.FileCache.ResolvedFilepath] = true; }
@@ -603,73 +611,38 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
             Thread.Sleep(1000);
         }
 
-        if (ct.IsCancellationRequested) return;
-
-        Logger.LogTrace("Threads exited");
-
-        if (!_ipcManager.Penumbra.APIAvailable)
-        {
-            Logger.LogWarning("Penumbra not available");
+        if (!ShouldContinue(ct))
             return;
-        }
+
+        TotalUpdateCount = entitiesToUpdate.Count + entitiesToRemove.Count;
 
         if (entitiesToUpdate.Any() || entitiesToRemove.Any())
         {
             foreach (var entity in entitiesToUpdate)
             {
                 _fileDbManager.UpdateHashedFile(entity);
+                Interlocked.Increment(ref _currentUpdateProgress);
             }
 
             foreach (var entity in entitiesToRemove)
             {
-                _fileDbManager.RemoveHashedFile(entity.Hash, entity.PrefixedFilePath);
+                _fileDbManager.RemoveHashedFile(entity.Sha1Hash, entity.Blake3Hash, entity.PrefixedFilePath);
+                Interlocked.Increment(ref _currentUpdateProgress);
             }
-
-            _fileDbManager.WriteOutFullCsv();
         }
+
+        _fileDbManager.WriteOutFullCsv();
 
         Logger.LogTrace("Scanner validated existing db files");
 
-        if (!_ipcManager.Penumbra.APIAvailable)
-        {
-            Logger.LogWarning("Penumbra not available");
-            return;
-        }
-
-        if (ct.IsCancellationRequested) return;
-
         // scan new files
-        if (allScannedFiles.Any(c => !c.Value))
+        var filesToReScan = allScannedFiles.Where(c => !c.Value).Select(c => c.Key).ToList();
+        if (filesToReScan.Count > 0)
         {
-            Parallel.ForEach(allScannedFiles.Where(c => !c.Value).Select(c => c.Key),
-                new ParallelOptions()
-                {
-                    MaxDegreeOfParallelism = threadCount,
-                    CancellationToken = ct
-                }, (cachePath) =>
-                {
-                    if (ct.IsCancellationRequested) return;
-
-                    if (!_ipcManager.Penumbra.APIAvailable)
-                    {
-                        Logger.LogWarning("Penumbra not available");
-                        return;
-                    }
-
-                    try
-                    {
-                        var entry = _fileDbManager.CreateFileEntry(cachePath);
-                        if (entry == null) _ = _fileDbManager.CreateCacheEntry(cachePath);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogWarning(ex, "Failed adding {file}", cachePath);
-                    }
-
-                    Interlocked.Increment(ref _currentFileProgress);
-                });
-
-            Logger.LogTrace("Scanner added {notScanned} new files to db", allScannedFiles.Count(c => !c.Value));
+            var paralleOptions = new ParallelOptions() { MaxDegreeOfParallelism = threadCount, CancellationToken = ct };
+            _currentStartTime = DateTime.UtcNow.Ticks;
+            Parallel.ForEach(filesToReScan, paralleOptions, cachePath => ScanSingleFile(cachePath, ct));
+            Logger.LogTrace("Scanner added {NotScanned} new files to db", filesToReScan.Count);
         }
 
         Logger.LogDebug("Scan complete");
@@ -678,6 +651,12 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
         entitiesToRemove.Clear();
         allScannedFiles.Clear();
 
+        if (_configService.Current.BetaEnableBlake3)
+        {
+            _configService.Current.BetaBlake3HashingDone = true;
+            _configService.Save();
+        }
+
         if (!_configService.Current.InitialScanComplete)
         {
             _configService.Current.InitialScanComplete = true;
@@ -685,5 +664,39 @@ public sealed class CacheMonitor : DisposableMediatorSubscriberBase
             StartFileWatcher(_configService.Current.CacheFolder);
             StartPenumbraWatcher(penumbraDir);
         }
+    }
+
+    private void ScanSingleFile(string cachePath, CancellationToken ct)
+    {
+        if (!ShouldContinue(ct))
+            return;
+
+        try
+
+        {
+            var entry = _fileDbManager.CreateFileEntry(cachePath);
+            if (entry == null) _ = _fileDbManager.CreateCacheEntry(cachePath);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed adding {file}", cachePath);
+        }
+        Interlocked.Increment(ref _currentFileProgress);
+    }
+
+    private bool ShouldContinue(CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested)
+        {
+            Logger.LogTrace("Threads exited");
+            return false;
+        }
+        else if (!_ipcManager.Penumbra.APIAvailable)
+        {
+            // At any point in time, penumbra might become unavailable. Best to check on every file
+            Logger.LogWarning("Penumbra not available");
+            return false;
+        }
+        return true;
     }
 }

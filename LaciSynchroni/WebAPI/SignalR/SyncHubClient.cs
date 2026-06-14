@@ -303,7 +303,18 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             return;
         }
 
-        _connection = InitializeHubConnection(serverHubUri, cancellationToken);
+        try
+            {
+            _logger.LogInformation("Attempting to connect to {ServerName} at {ServerHubUri}", ServerName, serverHubUri);
+            _connection = InitializeHubConnection(serverHubUri, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to initialize HubConnection to {ServerName} at {ServerHubUri}", ServerName, serverHubUri);
+            await StopConnectionAsync(ServerState.Disconnected).ConfigureAwait(false);
+            return;
+        }
+
         InitializeApiHooks();
 
         await _connection.StartAsync(cancellationToken).ConfigureAwait(false);
