@@ -9,11 +9,13 @@ public class ForeverRetryPolicy : IRetryPolicy
     private readonly SyncMediator _mediator;
     private readonly int _serverIndex;
     private bool _sentDisconnected = false;
+    private readonly string _serverName;
 
-    public ForeverRetryPolicy(SyncMediator mediator, int serverIndex)
+    public ForeverRetryPolicy(SyncMediator mediator, int serverIndex, string serverName)
     {
         _mediator = mediator;
         _serverIndex = serverIndex;
+        _serverName = serverName;
     }
 
     public TimeSpan? NextRetryDelay(RetryContext retryContext)
@@ -30,7 +32,7 @@ public class ForeverRetryPolicy : IRetryPolicy
         {
             if (!_sentDisconnected)
             {
-                _mediator.Publish(new NotificationMessage("Connection lost", "Connection lost to server", NotificationType.Warning, TimeSpan.FromSeconds(10)));
+                _mediator.Publish(new NotificationMessage("Connection lost", $"Connection lost to {_serverName}", NotificationType.Warning, TimeSpan.FromSeconds(10)));
                 _mediator.Publish(new DisconnectedMessage(_serverIndex));
             }
             _sentDisconnected = true;

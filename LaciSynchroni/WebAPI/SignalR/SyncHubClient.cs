@@ -472,7 +472,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                         .WithCompression(MessagePackCompression.Lz4Block)
                         .WithResolver(resolver);
             })
-            .WithAutomaticReconnect(new ForeverRetryPolicy(Mediator, ServerIndex))
+            .WithAutomaticReconnect(new ForeverRetryPolicy(Mediator, ServerIndex, ServerName))
             .ConfigureLogging(a =>
             {
                 a.ClearProviders().AddProvider(_loggerProvider);
